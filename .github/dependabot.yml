@@ -1,0 +1,13 @@
+# Weekly updates of the Go modules of the server and of the pinned actions. The bench module is left out: it is not
+# in the published repository.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

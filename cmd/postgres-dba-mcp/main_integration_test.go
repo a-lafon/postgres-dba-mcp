@@ -109,6 +109,19 @@ func start(t *testing.T, args ...string) *proc {
 	return p
 }
 
+// waitStderr returns stderr once it contains want, or what it holds after 5s. exec.Cmd copies stderr in its own
+// goroutine, so a line the server wrote before its first response can still be in flight when that response arrives.
+func (p *proc) waitStderr(want string) string {
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		s := p.stderr.String()
+		if strings.Contains(s, want) || time.Now().After(deadline) {
+			return s
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func (p *proc) send(msg map[string]any) {
 	p.t.Helper()
 	msg["jsonrpc"] = "2.0"
@@ -215,11 +228,12 @@ func TestPasswordNeverLogged(t *testing.T) {
 	if !isErr || !strings.HasPrefix(text, "ERROR: cannot connect to the database:") {
 		t.Errorf("wrong password call = %v %q", isErr, text)
 	}
-	if strings.Contains(text, pw) || strings.Contains(p.stderr.String(), pw) {
-		t.Errorf("password found in the tool text or stderr: %q / %q", text, p.stderr.String())
+	stderr := p.waitStderr("target pgdba_ro@" + target + ",")
+	if strings.Contains(text, pw) || strings.Contains(stderr, pw) {
+		t.Errorf("password found in the tool text or stderr: %q / %q", text, stderr)
 	}
-	if !strings.Contains(p.stderr.String(), "target pgdba_ro@"+target+",") {
-		t.Errorf("stderr = %q", p.stderr.String())
+	if !strings.Contains(stderr, "target pgdba_ro@"+target+",") {
+		t.Errorf("stderr = %q", stderr)
 	}
 }
 
@@ -229,8 +243,8 @@ func TestStartupLine(t *testing.T) {
 	p.initialize()
 	target := (&config.Config{DSN: dsn}).Redacted()
 	want := "postgres-dba-mcp dev: target " + target + ", access mode restricted, transport stdio\n"
-	if !strings.Contains(p.stderr.String(), want) {
-		t.Errorf("stderr = %q, want it to contain %q", p.stderr.String(), want)
+	if got := p.waitStderr(want); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want it to contain %q", got, want)
 	}
 	if !regexp.MustCompile(`^pgdba_ro@localhost:\d+/pgdba$`).MatchString(target) {
 		t.Errorf("target = %q", target)
@@ -243,8 +257,8 @@ func TestUnrestrictedWarningAndStdoutProtocolOnly(t *testing.T) {
 	p.request("tools/list", map[string]any{})
 	p.callTool("list_schemas", nil)
 	const warning = "WARNING: unrestricted mode: tools can modify the database; use a read-only role or --access-mode=restricted outside development"
-	if !strings.Contains(p.stderr.String(), warning) {
-		t.Errorf("stderr = %q", p.stderr.String())
+	if got := p.waitStderr(warning); !strings.Contains(got, warning) {
+		t.Errorf("stderr = %q", got)
 	}
 	if len(p.stdout) == 0 {
 		t.Fatal("no stdout line read")

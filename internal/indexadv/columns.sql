@@ -8,8 +8,11 @@ WITH req AS (
     SELECT req.ord, c.oid, c.relkind::text AS relkind, ns.nspname, c.relname,
            quote_ident(ns.nspname) || '.' || quote_ident(c.relname) AS qname,
            pg_total_relation_size(c.oid) AS total_size,
-           EXISTS (SELECT 1 FROM pg_stat_user_tables st
-                   WHERE st.relid = c.oid AND (st.last_analyze IS NOT NULL OR st.last_autoanalyze IS NOT NULL)) AS analyzed
+           -- pg_statistic is written by ANALYZE itself; last_analyze is reported asynchronously up to PostgreSQL 14
+           -- but is still needed for an empty table, which ANALYZE leaves without pg_statistic rows.
+           (EXISTS (SELECT 1 FROM pg_stats ps WHERE ps.schemaname = ns.nspname AND ps.tablename = c.relname)
+            OR EXISTS (SELECT 1 FROM pg_stat_user_tables st
+                       WHERE st.relid = c.oid AND (st.last_analyze IS NOT NULL OR st.last_autoanalyze IS NOT NULL))) AS analyzed
     FROM req
     JOIN pg_class c ON c.oid = to_regclass(CASE WHEN req.s = '' THEN quote_ident(req.n)
                                                 ELSE quote_ident(req.s) || '.' || quote_ident(req.n) END)
