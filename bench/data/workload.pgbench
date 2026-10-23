@@ -1,0 +1,12 @@
+\set acc random(1, 500)
+\set oid random(1, 1000)
+SELECT * FROM public.events WHERE account_id = :acc ORDER BY created_at DESC LIMIT 20;
+SELECT count(*) FROM public.orders WHERE status = 'pending';
+SELECT count(*) FROM public.events WHERE account_id = :acc AND created_at > '2025-02-01'::timestamptz;
+SELECT o.id, o.amount FROM public.orders o WHERE o.account_id = :acc AND o.status = 'done' ORDER BY o.created_at DESC LIMIT 10;
+SELECT id, kind FROM public.events WHERE account_id = :acc AND created_at < '2025-01-20'::timestamptz ORDER BY created_at DESC LIMIT 50;
+SELECT sum(amount) FROM public.orders WHERE created_at BETWEEN '2025-01-10'::timestamptz AND '2025-01-20'::timestamptz;
+SELECT * FROM public.accounts WHERE id = :acc;
+SELECT * FROM public.orders WHERE id = :oid;
+SELECT a.name, count(*) FROM public.accounts a JOIN public.orders o ON o.account_id = a.id WHERE a.id = :acc GROUP BY a.name;
+SELECT payload->>'n' FROM public.events WHERE id = :oid;

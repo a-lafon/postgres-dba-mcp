@@ -1,0 +1,52 @@
+# Test fixture: Postgres with hypopg and pg_stat_statements, and PgBouncer in transaction mode in front of it.
+#   PG_MAJOR=17 docker compose up -d --build --wait
+services:
+  pg:
+    build:
+      context: testdata/docker
+      args:
+        PG_MAJOR: ${PG_MAJOR:-17}
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+    environment:
+      POSTGRES_PASSWORD: pgdba
+      POSTGRES_DB: pgdba
+      # Explicit because postgres:18 moved its default data directory; the tmpfs gives a clean cluster at every start.
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - ./testdata/seed:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Over TCP: during init the entrypoint's temporary server listens on the Unix socket only.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "pgdba"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
+      start_period: 120s
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.26.1-p0
+    environment:
+      DB_HOST: pg
+      DB_NAME: pgdba
+      DB_USER: pgdba_ro
+      DB_PASSWORD: pgdba
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "56432:5432"
+    depends_on:
+      pg:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 5432"]
+      interval: 1s
+      timeout: 3s
+      retries: 10

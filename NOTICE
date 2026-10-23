@@ -1,0 +1,64 @@
+postgres-dba-mcp
+
+This project is a replacement for crystaldba/postgres-mcp 0.3.0 and reproduces some of its SQL.
+The license of crystaldba/postgres-mcp follows.
+
+MIT License
+
+Copyright (c) 2025, Crystal Corp.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Some of these queries come from PgHero (https://github.com/ankane/pghero) through crystaldba/postgres-mcp, as
+marked below. The license of PgHero follows.
+
+Copyright (c) 2014-2026 Andrew Kane, 2008-2014 Heroku (initial queries)
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+## Files reproducing crystaldba SQL
+
+- internal/stats/top_queries_resources.sql: adapted from the get_top_queries "resources" query.
+- internal/health/indexes.sql: index list of the invalid and duplicate checks (database_health/index_health_calc.py, PgHero); key columns read from the catalogs
+- internal/health/index_bloat.sql: index bloat estimate (database_health/index_health_calc.py, PgHero); threshold as a bind parameter
+- internal/health/unused_indexes.sql: rarely used indexes (database_health/index_health_calc.py); fewer columns, scan limit as a bind parameter
+- internal/health/wraparound.sql: transaction ID wraparound (database_health/vacuum_health_calc.py, PgHero); constants as bind parameters
+- internal/health/buffer.sql: cache hit rates (database_health/buffer_health_calc.py); both rates in one query; the heap read culprits of the table side are not from crystaldba
+- internal/health/constraints.sql: NOT VALID constraints (database_health/constraint_health_calc.py); ordered
+- internal/indexadv/workload.sql: DTA workload selection (index/dta_calc.py, workload query); current database and top-level statements only, thresholds as bind parameters
+- internal/indexadv/columns.sql: long text columns excluded from candidates (index/dta_calc.py); resolved through the catalog
