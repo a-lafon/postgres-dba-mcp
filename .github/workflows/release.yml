@@ -1,0 +1,60 @@
+name: release
+
+# Runs on version tags only. Linux binaries are cgo static musl builds cross-compiled with zig cc
+# (.goreleaser.yaml); darwin and windows are CGO_ENABLED=0, so the plain runner plus zig is enough.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # create the GitHub release and upload the archives
+  packages: write # push the image to GHCR
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Unit tests
+        run: go test -race ./...
+      - name: Known vulnerabilities in the code paths used
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.13.0
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean
+      - name: Smoke test the snapshot binary
+        run: scripts/smoke-initialize.sh dist/linux_linux_amd64_v1/postgres-dba-mcp
+      - name: Smoke test the snapshot image
+        run: |
+          image=$(docker image ls --format '{{.Repository}}:{{.Tag}}' ghcr.io/a-lafon/postgres-dba-mcp | grep -- '-amd64$' | head -n 1)
+          test -n "$image"
+          scripts/smoke-initialize.sh docker run -i --rm -e DATABASE_URI "$image"
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A fine-grained token that writes the Homebrew tap only: GITHUB_TOKEN cannot write to another repository.
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

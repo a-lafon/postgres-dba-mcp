@@ -1,0 +1,5 @@
+bench/bin/
+dist/
+.env
+.claude/
+CLAUDE.md

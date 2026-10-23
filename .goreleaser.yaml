@@ -1,0 +1,129 @@
+# Release pipeline. Linux binaries (and the image) build go-pgquery with cgo (tag pgquery_cgo): libpg_query is
+# compiled natively instead of from WASM at startup, whose ~300 MB peak gets containers OOM-killed
+# (measures in internal/safesql/PARSER.md). They are static musl binaries cross-built with zig cc; netgo and osusergo keep
+# the pure Go DNS resolver and user lookup. darwin and windows keep the WASM parser with CGO_ENABLED=0: zig cannot
+# link darwin cgo binaries (no Apple SDK), and desktops have no container memory limit.
+# Validate locally with: goreleaser release --snapshot --clean (needs zig on PATH)
+version: 2
+
+project_name: postgres-dba-mcp
+
+builds:
+  - id: linux
+    main: ./cmd/postgres-dba-mcp
+    binary: postgres-dba-mcp
+    env:
+      - CGO_ENABLED=1
+      - CC=zig cc -target {{ if eq .Arch "amd64" }}x86_64{{ else }}aarch64{{ end }}-linux-musl
+    goos: [linux]
+    goarch: [amd64, arm64]
+    tags: [pgquery_cgo, netgo, osusergo]
+    flags:
+      - -trimpath
+    ldflags:
+      # -s in -extldflags also strips the C debug info of libpg_query, which -s alone keeps.
+      - -s -w -X main.version={{ .Version }} -linkmode=external -extldflags "-static -s"
+  - id: desktop
+    main: ./cmd/postgres-dba-mcp
+    binary: postgres-dba-mcp
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: default
+    ids: [linux, desktop]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+      - MIGRATION.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+dockers:
+  - id: image-amd64
+    ids: [linux]
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: Dockerfile
+    extra_files: [LICENSE, NOTICE]
+    image_templates:
+      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-amd64"
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.source=https://github.com/a-lafon/postgres-dba-mcp"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+  - id: image-arm64
+    ids: [linux]
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: Dockerfile
+    extra_files: [LICENSE, NOTICE]
+    image_templates:
+      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-arm64"
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.source=https://github.com/a-lafon/postgres-dba-mcp"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+docker_manifests:
+  - name_template: "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-amd64"
+      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/a-lafon/postgres-dba-mcp:latest"
+    image_templates:
+      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-amd64"
+      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-arm64"
+
+# The Homebrew cask, pushed to the tap by a release (a snapshot writes it under dist/ and pushes nothing). The
+# binaries are not signed, so the post-install hook clears the quarantine Homebrew sets on what a cask downloads.
+homebrew_casks:
+  - name: postgres-dba-mcp
+    ids: [default]
+    repository:
+      owner: a-lafon
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/a-lafon/postgres-dba-mcp
+    description: "Postgres MCP server with compact, bounded output"
+    binaries: [postgres-dba-mcp]
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/postgres-dba-mcp"]
+          end
+
+release:
+  github:
+    owner: a-lafon
+    name: postgres-dba-mcp
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs"
+      - "^test"

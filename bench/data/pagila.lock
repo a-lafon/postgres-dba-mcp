@@ -1,0 +1,5 @@
+# Pagila, fetched by `bench load` and never committed. One file per line: <name> <sha256> <raw URL>.
+# Commit 23f7fe7a1e9f5772f85fc14f530583ffa258c6d2 of devrimgunduz/pagila (2026-07-28), the last one before the schema
+# needs PostgreSQL 18 (uuidv7()); the bench database runs PostgreSQL 17 by default.
+pagila-schema.sql 18de72ae8669a0099b47be6d54b60ca5334114f38db65bf21ae82b0fc752d1ad https://raw.githubusercontent.com/devrimgunduz/pagila/23f7fe7a1e9f5772f85fc14f530583ffa258c6d2/pagila-schema.sql
+pagila-data.sql 2ca58493e45c01e0978ddf9a9e4796ef3acd3290ac0093b91a6d4e7b6b80d625 https://raw.githubusercontent.com/devrimgunduz/pagila/23f7fe7a1e9f5772f85fc14f530583ffa258c6d2/pagila-data.sql

@@ -1,0 +1,131 @@
+# Volatile functions of pg_catalog (PostgreSQL 14 to 18) reviewed and allowed in restricted mode, one "name reason"
+# line each. The denied ones are in internal/safesql/denylist.go. TestCatalogVolatileClassified fails on a volatile
+# function that is in neither: classify it after checking what it does inside a READ ONLY transaction.
+
+# Trigger and language support: they fail unless called by the trigger manager or the function manager.
+RI_FKey_cascade_del trigger function
+RI_FKey_cascade_upd trigger function
+RI_FKey_check_ins trigger function
+RI_FKey_check_upd trigger function
+RI_FKey_noaction_del trigger function
+RI_FKey_noaction_upd trigger function
+RI_FKey_restrict_del trigger function
+RI_FKey_restrict_upd trigger function
+RI_FKey_setdefault_del trigger function
+RI_FKey_setdefault_upd trigger function
+RI_FKey_setnull_del trigger function
+RI_FKey_setnull_upd trigger function
+suppress_redundant_updates_trigger trigger function
+tsvector_update_trigger trigger function
+tsvector_update_trigger_column trigger function
+unique_key_recheck trigger function
+plpgsql_call_handler language handler, cannot be called from SQL
+plpgsql_validator compiles a function body, writes nothing
+amvalidate checks an operator class against the catalog
+
+# Random values, clock and session-local state.
+array_sample random
+array_shuffle random
+gen_random_uuid random
+random random
+random_normal random
+uuidv4 random
+uuidv7 random and clock
+setseed seed of random() in this session
+clock_timestamp clock
+timeofday clock
+timezone current time zone of the session
+current_query text of the current statement
+pg_sleep bounded by statement_timeout
+pg_sleep_for bounded by statement_timeout
+pg_sleep_until bounded by statement_timeout
+pg_stat_clear_snapshot discards this session's statistics snapshot
+pg_stat_force_next_flush flushes this session's own statistics
+
+# Sequences: nextval and setval fail in a read-only transaction.
+currval reads this session's last value
+lastval reads this session's last value
+nextval refused by READ ONLY
+setval refused by READ ONLY
+pg_get_sequence_data reads a sequence
+pg_sequence_last_value reads a sequence
+
+# Sizes and object information.
+pg_database_size reads sizes
+pg_indexes_size reads sizes
+pg_relation_size reads sizes
+pg_table_size reads sizes
+pg_tablespace_size reads sizes
+pg_total_relation_size reads sizes
+pg_partition_ancestors reads the catalog
+pg_partition_tree reads the catalog
+pg_collation_actual_version reads the collation provider
+pg_database_collation_actual_version reads the collation provider
+currtid2 reads a row version
+
+# Transactions, locks and snapshots.
+pg_blocking_pids reads the lock table
+pg_safe_snapshot_blocking_pids reads the lock table
+pg_isolation_test_session_is_blocked reads the lock table
+pg_lock_status reads the lock table
+pg_export_snapshot exports this transaction's snapshot, read-only
+pg_prepared_xact reads prepared transactions
+pg_get_multixact_members reads a multixact
+pg_last_committed_xact reads commit timestamps
+pg_xact_commit_timestamp reads commit timestamps
+pg_xact_commit_timestamp_origin reads commit timestamps
+pg_xact_status reads a transaction status
+txid_status reads a transaction status
+pg_notification_queue_usage reads the NOTIFY queue size
+
+# Server state, WAL and recovery.
+pg_control_checkpoint reads pg_control
+pg_control_init reads pg_control
+pg_control_recovery reads pg_control
+pg_control_system reads pg_control
+pg_current_wal_flush_lsn reads a WAL position
+pg_current_wal_insert_lsn reads a WAL position
+pg_current_wal_lsn reads a WAL position
+pg_last_wal_receive_lsn reads a WAL position
+pg_last_wal_replay_lsn reads a WAL position
+pg_last_xact_replay_timestamp reads replay progress
+pg_get_wal_replay_pause_state reads replay state
+pg_is_wal_replay_paused reads replay state
+pg_is_in_recovery reads recovery state
+pg_is_in_backup reads backup state
+pg_get_wal_resource_managers lists WAL resource managers
+pg_available_wal_summaries lists WAL summaries
+pg_get_wal_summarizer_state reads WAL summarizer state
+pg_wal_summary_contents reads a WAL summary
+pg_show_replication_origin_status reads replication origins
+pg_jit_available reads JIT availability
+pg_get_aios reads asynchronous I/O state
+pg_get_backend_memory_contexts reads this session's memory
+pg_get_loaded_modules lists loaded libraries
+pg_get_shmem_allocations reads shared memory
+pg_get_shmem_allocations_numa reads shared memory
+pg_get_wait_events lists wait events
+pg_current_logfile name of the current log file, not its content
+pg_hba_file_rules parsed pg_hba.conf, superuser or granted only
+pg_ident_file_mappings parsed pg_ident.conf, superuser or granted only
+pg_show_all_file_settings parsed configuration files, superuser or granted only
+
+# Statistics readers.
+pg_stat_get_backend_io reads statistics
+pg_stat_get_backend_wal reads statistics
+pg_stat_get_io reads statistics
+pg_stat_get_recovery_prefetch reads statistics
+pg_stat_get_xact_blocks_fetched reads statistics
+pg_stat_get_xact_blocks_hit reads statistics
+pg_stat_get_xact_function_calls reads statistics
+pg_stat_get_xact_function_self_time reads statistics
+pg_stat_get_xact_function_total_time reads statistics
+pg_stat_get_xact_numscans reads statistics
+pg_stat_get_xact_tuples_deleted reads statistics
+pg_stat_get_xact_tuples_fetched reads statistics
+pg_stat_get_xact_tuples_hot_updated reads statistics
+pg_stat_get_xact_tuples_inserted reads statistics
+pg_stat_get_xact_tuples_newpage_updated reads statistics
+pg_stat_get_xact_tuples_returned reads statistics
+pg_stat_get_xact_tuples_updated reads statistics
+pg_stat_have_stats reads statistics

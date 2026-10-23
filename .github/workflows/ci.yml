@@ -1,0 +1,79 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request cancels the run in progress.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Actions are pinned to a commit: a tag of a third-party action can be moved.
+jobs:
+  lint-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      # shellcheck comes with the ubuntu runner image.
+      - name: shellcheck
+        run: shellcheck install.sh scripts/*.sh
+      - name: go.mod and go.sum are tidy
+        run: |
+          go mod tidy
+          # The bench module is not in the published repository, only its data (scripts/public-branch.sh).
+          if [ -f bench/go.mod ]; then (cd bench && go mod tidy); fi
+          git diff --exit-code -- go.mod go.sum bench/go.mod bench/go.sum
+      # golangci-lint's govet runs every go vet analyzer, so no separate go vet step.
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+      - name: Known vulnerabilities in the code paths used
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+      - name: Unit tests
+        run: go test -race ./...
+      - name: Bench unit tests
+        if: hashFiles('bench/go.mod') != ''
+        working-directory: bench
+        run: go vet ./... && go test -race ./...
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        pg_major: [14, 15, 16, 17, 18]
+    env:
+      PG_MAJOR: ${{ matrix.pg_major }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Start the fixture
+        run: docker compose up -d --build --wait
+      - name: Integration tests
+        # One package at a time: packages share cluster-wide state (pg_stat_statements, replication slots).
+        # pgquery_cgo: the parser the Linux release ships; lint-unit covers the WASM one (darwin, windows, go install).
+        run: go test -race -tags integration,pgquery_cgo -p 1 ./...
+      - name: Fixture logs
+        if: failure()
+        run: docker compose logs
+      - name: Stop the fixture
+        if: always()
+        run: docker compose down -v
