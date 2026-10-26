@@ -56,45 +56,24 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
-dockers:
-  - id: image-amd64
+# One multi-platform image, built and pushed at publish time. A snapshot builds one image per platform instead,
+# tagged with an -amd64 or -arm64 suffix and loaded locally, which the release workflow smoke tests.
+dockers_v2:
+  - id: image
     ids: [linux]
-    goos: linux
-    goarch: amd64
-    use: buildx
     dockerfile: Dockerfile
     extra_files: [LICENSE, NOTICE]
-    image_templates:
-      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-amd64"
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.source=https://github.com/a-lafon/postgres-dba-mcp"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.licenses=MIT"
-  - id: image-arm64
-    ids: [linux]
-    goos: linux
-    goarch: arm64
-    use: buildx
-    dockerfile: Dockerfile
-    extra_files: [LICENSE, NOTICE]
-    image_templates:
-      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-arm64"
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.source=https://github.com/a-lafon/postgres-dba-mcp"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.licenses=MIT"
-
-docker_manifests:
-  - name_template: "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-amd64"
-      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/a-lafon/postgres-dba-mcp:latest"
-    image_templates:
-      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-amd64"
-      - "ghcr.io/a-lafon/postgres-dba-mcp:{{ .Version }}-arm64"
+    images:
+      - "ghcr.io/a-lafon/postgres-dba-mcp"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms: [linux/amd64, linux/arm64]
+    labels:
+      org.opencontainers.image.source: "https://github.com/a-lafon/postgres-dba-mcp"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.licenses: "MIT"
+    sbom: false
 
 # The Homebrew cask, pushed to the tap by a release (a snapshot writes it under dist/ and pushes nothing). The
 # binaries are not signed, so the post-install hook clears the quarantine Homebrew sets on what a cask downloads.
@@ -111,9 +90,9 @@ homebrew_casks:
     binaries: [postgres-dba-mcp]
     hooks:
       post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/postgres-dba-mcp"]
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/postgres-dba-mcp"]
           end
 
 release:
