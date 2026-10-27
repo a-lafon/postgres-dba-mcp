@@ -7,7 +7,7 @@
 
 <p align="center"><b>Bounded, read-only PostgreSQL access for AI assistants.</b></p>
 
-A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It is a drop-in replacement for [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0: the same nine tools with the same parameters, in one static binary.
+A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It replaces [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0 with the same nine tools and the same parameters, in one static binary. Switching is one line of client configuration; what the model receives changes (compact CSV, bounded results, one statement per call), as listed in [MIGRATION.md](MIGRATION.md).
 
 ## Why
 
@@ -17,7 +17,7 @@ crystaldba/postgres-mcp gives an assistant the right DBA tools: schema, SQL, pla
 - **A restricted mode that can be bypassed.** Function names are not checked in `FROM`, so a "read-only" call can still run functions such as `pg_read_file` or `pg_advisory_lock` ([CVE-2026-85620](https://github.com/advisories/GHSA-cm87-gp55-7cgj)).
 - **Weight.** A Python container of about 300 MB that sits at about 250 MB of memory.
 
-postgres-dba-mcp keeps the tools and their parameters, so switching is one line of client configuration ([MIGRATION.md](MIGRATION.md)), and changes what the model receives:
+What the model receives changes:
 
 - compact CSV with an explicit footer, every result capped in rows, bytes and cell length, and every cut announced;
 - a restricted mode, on by default, that parses each statement with PostgreSQL's own parser (libpg_query) and checks every function call anywhere in it, inside a read-only transaction;
@@ -352,6 +352,7 @@ On Linux, replace `host.docker.internal` by the address of the host on the bridg
 - Coming from crystaldba/postgres-mcp 0.3.0: [MIGRATION.md](MIGRATION.md) lists every difference you can observe.
 - Reporting a vulnerability: [SECURITY.md](SECURITY.md).
 - Working on the code: [CONTRIBUTING.md](CONTRIBUTING.md).
+- Maintained by one person on a best-effort basis; issues and pull requests are welcome.
 
 ## License
 
