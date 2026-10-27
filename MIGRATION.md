@@ -2,6 +2,8 @@
 
 postgres-dba-mcp keeps the nine tool names and their parameters, so an MCP client configuration usually changes only in its `command`. Everything a user can observe that differs is listed below.
 
+Replace the existing server entry rather than adding this one next to it: both expose the same tool names, and a client that sees both may keep calling the old one.
+
 To get the closest behavior to 0.3.0 for a development database, start the server with `--access-mode=unrestricted`:
 
 ```json
@@ -33,7 +35,6 @@ Statements are still limited to one per call in that mode (see the first table).
 | **Session settings** are not configured: no timeouts, and values follow the server and role defaults (time zone, date style). | Every transaction sets `TimeZone` to `UTC`, `DateStyle` to `ISO, YMD`, `IntervalStyle` to `postgres` and `bytea_output` to `hex`. | Expect UTC timestamps. |
 | **Connection failures** read `Connection attempt failed: <error>` with the password masked, and no connect timeout is set. | The error reads `ERROR: cannot connect to the database: ...` without the password, and an unreachable host fails after 10 s unless the URI sets `connect_timeout`. | None. |
 | No check of the database role. | After the first connection, a warning is logged on stderr when the role is a superuser, bypasses row-level security, owns tables, or has a powerful built-in role, and when PostgreSQL is newer than 18, the newest version the function denylist was checked against. Skipped in unrestricted mode. | Use a read-only role. |
-| **Array parameters** (`hypothetical_indexes`, `queries`) may be declared without `items`, which some clients (Gemini) reject (crystaldba #77). | Every array parameter declares `items`. | None. |
 | No documented annotations. | Every tool carries a title and `readOnlyHint` / `destructiveHint` annotations. `destructiveHint` is true only for `execute_sql` in unrestricted mode. | None. |
 | No per-call log. | One stderr line per call: `call tool=<name> ms=<n> status=ok bytes=<n>` (or `status=error sqlstate=<code>`), never with the SQL text. | None. |
 | Tools cannot be switched off. | `--tools` enables groups (`schema`, `query`, `explain`, `stats`, `health`, `index`). Only enabled tools are listed. | Use `--tools=schema,health` for a smaller surface. |
