@@ -8,13 +8,14 @@ import (
 	"io"
 	"net"
 	"net/url"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/a-lafon/postgres-dba-mcp/internal/safesql"
 )
 
 // Groups lists the tool groups, in the order used by error messages.
@@ -179,15 +180,11 @@ func Parse(args []string, env func(string) string) (*Config, error) {
 	if c.StatementTimeout <= 0 {
 		return nil, errors.New("--statement-timeout: must be greater than 0")
 	}
-	for _, l := range []struct {
-		flag string
-		v    []string
-	}{{"--allow-function", allow}, {"--deny-function", deny}} {
-		for _, p := range l.v {
-			if err := checkFunctionPattern(p); err != nil {
-				return nil, fmt.Errorf("%s: %w", l.flag, err)
-			}
-		}
+	// The policy owns the pattern rules, and names the flag in its error;
+	// building one here turns a bad pattern into a flag error instead of a
+	// panic when a tool registers.
+	if _, err := safesql.NewPolicy(allow, deny); err != nil {
+		return nil, fmt.Errorf("--%w", err)
 	}
 	c.AllowFunctions, c.DenyFunctions = allow, deny
 	return c, nil
@@ -264,23 +261,6 @@ func parseTools(s string) ([]string, error) {
 		out = append(out, g)
 	}
 	return out, nil
-}
-
-// checkFunctionPattern applies the rule of the safe-SQL policy: at most one dot, non-empty parts, valid path.Match patterns.
-func checkFunctionPattern(p string) error {
-	parts := strings.Split(p, ".")
-	if len(parts) > 2 {
-		return fmt.Errorf("invalid pattern %q: at most one \".\" (schema.function)", p)
-	}
-	for _, part := range parts {
-		if part == "" {
-			return fmt.Errorf("invalid pattern %q: empty name", p)
-		}
-		if _, err := path.Match(part, ""); err != nil {
-			return fmt.Errorf("invalid pattern %q: %w", p, err)
-		}
-	}
-	return nil
 }
 
 var (
