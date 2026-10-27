@@ -138,8 +138,15 @@ func getTopQueries(ctx context.Context, d statsDB, a args) (topQueries, error) {
 	if err != nil {
 		return topQueries{}, err
 	}
-	if _, ok := info.Extensions["pg_stat_statements"]; !ok {
+	v, ok := info.Extensions["pg_stat_statements"]
+	if !ok {
 		return topQueries{}, errNotInstalled
+	}
+	// The queries read total_exec_time and wal_bytes, columns of extension 1.8; a server upgraded with
+	// pg_upgrade keeps the old version until ALTER EXTENSION ... UPDATE. An unreadable version is refused
+	// like an old one.
+	if !db.AtLeast(v, 1, 8) {
+		return topQueries{}, fmt.Errorf("get_top_queries needs pg_stat_statements 1.8 or later (installed: %s): run ALTER EXTENSION pg_stat_statements UPDATE", v)
 	}
 	res := topQueries{SortBy: a.SortBy}
 	start := time.Now()
