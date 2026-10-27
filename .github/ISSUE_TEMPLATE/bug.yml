@@ -1,0 +1,51 @@
+name: Bug report
+description: A tool returns a wrong result, an error, or the server does not start.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `postgres-dba-mcp --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: access-mode
+    attributes:
+      label: Access mode
+      options: [restricted, unrestricted]
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options: [stdio, streamable-http, sse]
+    validations:
+      required: true
+  - type: input
+    id: postgres
+    attributes:
+      label: PostgreSQL version
+      placeholder: "17.6"
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: Claude Code, Codex, Cursor...
+  - type: textarea
+    id: call
+    attributes:
+      label: Tool call and output
+      description: The tool, its arguments and what it returned. Remove passwords and private data.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
