@@ -7,6 +7,10 @@
 
 <p align="center"><b>Bounded, read-only PostgreSQL access for AI assistants.</b></p>
 
+<p align="center"><img alt="Claude Code asks the Pagila movie database which actors appear in the most films, then which of Gina Degeneres's films were rented the most: each execute_sql call returns compact CSV with a row-count footer before the answer" src="assets/demo.gif" width="860"></p>
+
+Let Claude Code, Codex or any MCP client explore a PostgreSQL database, run SQL, read query plans, test hypothetical indexes, find the slowest queries and check the database's health, without flooding the model's context or escaping read-only mode.
+
 A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It replaces [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0 with the same nine tools and the same parameters, in one static binary. Switching is one line of client configuration; what the model receives changes (compact CSV, bounded results, one statement per call), as listed in [MIGRATION.md](MIGRATION.md).
 
 ## Why

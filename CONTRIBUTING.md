@@ -1,5 +1,16 @@
 # Contributing
 
+Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Where help is welcome
+
+- Bug reports with the tool call and what it returned: the bug template asks for them. A bypass of restricted mode goes through [SECURITY.md](SECURITY.md), never a public issue.
+- Documentation: a sentence of the README or MIGRATION.md that is wrong or unclear is a bug, and so is a missing setup note for an MCP client.
+- A new PostgreSQL major (see below) and reviews of the function denylist.
+- Feature requests that start from a problem met with a real database.
+
+Likely declined: changing the parameters of the nine tools, which stay those of crystaldba/postgres-mcp 0.3.0 so that switching remains one line of configuration, and anything that lets restricted mode write. Open an issue before a large pull request.
+
 ## Where the truth is
 
 `README.md` describes what the server does, and `MIGRATION.md` every difference a user of crystaldba/postgres-mcp 0.3.0 can observe. The tests are the executable reference: unit tests next to the code, integration tests against the Docker fixture. A change of behavior updates the tests and these two documents in the same pull request.
