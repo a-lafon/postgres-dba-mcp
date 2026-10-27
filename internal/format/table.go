@@ -2,6 +2,7 @@ package format
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,9 @@ type Table struct {
 	// Estimate is the planner's estimate of the total number of rows when the result is truncated, 0 when unknown.
 	// It is shown only when it exceeds the rows rendered.
 	Estimate int64
+	// CellLimit is the highest max_cell a caller may ask for; when above the maxCell given to Render, a shortened
+	// cell adds a footer line naming the columns and saying how to read more. 0 for tools without max_cell.
+	CellLimit int
 }
 
 // csvField quotes s when it contains a comma or a quote, starts or ends with a space, is empty, or is exactly \N.
@@ -86,7 +90,7 @@ func (t Table) cap(j, maxCell int) int {
 
 // footer builds the footer lines. trunc is "" when the result is complete.
 // est is the estimated total row count, 0 when unknown; it is shown only with a truncation.
-func footer(rows int, est int64, trunc string, shortened int, d time.Duration) string {
+func footer(rows int, est int64, trunc string, shortened int, hit []string, cellLimit int, d time.Duration) string {
 	parts := []string{plural(rows, "row")}
 	if trunc != "" && est > int64(rows) {
 		parts[0] = fmt.Sprintf("%d of ~%s rows (planner estimate)", rows, Approx(est))
@@ -94,11 +98,19 @@ func footer(rows int, est int64, trunc string, shortened int, d time.Duration) s
 	if trunc != "" {
 		parts = append(parts, trunc)
 	}
-	if shortened > 0 {
+	hint := shortened > 0 && cellLimit > 0 // the hint line counts the shortened cells instead of the first line
+	if shortened > 0 && !hint {
 		parts = append(parts, plural(shortened, "cell")+" shortened")
 	}
 	parts = append(parts, Duration(d))
 	s := "-- " + strings.Join(parts, ", ") + "\n"
+	if hint {
+		names := make([]string, len(hit))
+		for i, h := range hit {
+			names[i] = escape(h) // a newline in a column alias must not forge a footer line
+		}
+		s += fmt.Sprintf("-- %s shortened (%s); pass max_cell (up to %d) to read more\n", plural(shortened, "cell"), strings.Join(names, ", "), cellLimit)
+	}
 	if trunc != "" {
 		s += "-- Refine with WHERE, LIMIT or an aggregate to see the rest.\n"
 	}
@@ -137,9 +149,13 @@ func Render(t Table, maxBytes, maxCell int, d time.Duration) (string, error) {
 	}
 
 	// The header must leave room for the longest footer it can need: an empty result, or none of the rows fitting.
-	needed := footer(0, 0, "", 0, d)
+	cellLimit := t.CellLimit
+	if maxCell >= cellLimit {
+		cellLimit = 0
+	}
+	needed := footer(0, 0, "", 0, nil, 0, d)
 	if len(rows) > 0 || more {
-		needed = footer(0, est, byBytes, 0, d)
+		needed = footer(0, est, byBytes, 0, nil, 0, d)
 	}
 	if len(prefix)+len(header)+len(needed) > maxBytes {
 		return "", fmt.Errorf("result header alone exceeds --max-bytes (%d bytes); select fewer columns", len(prefix)+len(header))
@@ -149,9 +165,11 @@ func Render(t Table, maxBytes, maxCell int, d time.Duration) (string, error) {
 	b.WriteString(prefix)
 	b.WriteString(header)
 	shortened, written := 0, 0
+	var hit []string // columns with a shortened cell, in column order, among the rows written
 	for i, row := range rows {
 		var line strings.Builder
 		cellsShortened := 0
+		rowHit := hit
 		for j, c := range row {
 			text, short := cellText(c, t.cap(j, maxCell))
 			if j > 0 {
@@ -160,6 +178,10 @@ func Render(t Table, maxBytes, maxCell int, d time.Duration) (string, error) {
 			line.WriteString(text)
 			if short {
 				cellsShortened++
+				if j < len(t.Columns) && !slices.Contains(rowHit, t.Columns[j]) {
+					// The capped slice forces a copy, so a dropped row cannot change hit.
+					rowHit = append(rowHit[:len(rowHit):len(rowHit)], t.Columns[j])
+				}
 			}
 		}
 		line.WriteByte('\n')
@@ -169,27 +191,28 @@ func Render(t Table, maxBytes, maxCell int, d time.Duration) (string, error) {
 		var f string
 		switch {
 		case !last:
-			f = footer(i+1, est, byBytes, shortened+cellsShortened, d)
+			f = footer(i+1, est, byBytes, shortened+cellsShortened, rowHit, cellLimit, d)
 		case more:
-			f = footer(i+1, est, moreThan, shortened+cellsShortened, d)
+			f = footer(i+1, est, moreThan, shortened+cellsShortened, rowHit, cellLimit, d)
 		default:
-			f = footer(i+1, 0, "", shortened+cellsShortened, d)
+			f = footer(i+1, 0, "", shortened+cellsShortened, rowHit, cellLimit, d)
 		}
 		if b.Len()+line.Len()+len(f) > maxBytes {
 			break
 		}
 		b.WriteString(line.String())
 		shortened += cellsShortened
+		hit = rowHit
 		written++
 	}
 
 	switch {
 	case written < len(rows):
-		b.WriteString(footer(written, est, byBytes, shortened, d))
+		b.WriteString(footer(written, est, byBytes, shortened, hit, cellLimit, d))
 	case more:
-		b.WriteString(footer(written, est, moreThan, shortened, d))
+		b.WriteString(footer(written, est, moreThan, shortened, hit, cellLimit, d))
 	default:
-		b.WriteString(footer(written, 0, "", shortened, d))
+		b.WriteString(footer(written, 0, "", shortened, hit, cellLimit, d))
 	}
 	return b.String(), nil
 }

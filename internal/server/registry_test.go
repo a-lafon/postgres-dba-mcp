@@ -110,7 +110,8 @@ func TestInitialize(t *testing.T) {
 				"Tabular results are CSV with a header row; NULL is \\N. In values, \\n \\r \\t are control characters and \\\\ is a backslash.\n" +
 				"A tsvector value is shown as [tsvector: <n> lexemes]; select col::text to read it.\n" +
 				"The last line starts with \"--\" and reports row count, truncation and timing.\n" +
-				"If a result is truncated, refine the query (WHERE, LIMIT, aggregates) rather than asking for more rows."
+				"If a result is truncated, refine the query (WHERE, LIMIT, aggregates) rather than asking for more rows.\n" +
+				"A long cell is cut and ends with …[+<n> chars]; execute_sql takes max_cell to read more of it."
 			if res.Instructions != want {
 				t.Errorf("instructions = %q, want %q", res.Instructions, want)
 			}

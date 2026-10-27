@@ -26,6 +26,8 @@ func TestParseErrors(t *testing.T) {
 			`--tools: unknown group "foo" (valid: schema, query, explain, stats, health, index, all)`},
 		{"rows above limit", []string{"--max-rows=5000", "--max-rows-limit=1000", "postgres://u@h/db"}, nil,
 			"--max-rows: 5000 exceeds --max-rows-limit 1000"},
+		{"cell above limit", []string{"--max-cell=500", "--max-cell-limit=400", "postgres://u@h/db"}, nil,
+			"--max-cell: 500 exceeds --max-cell-limit 400"},
 		{"access mode", []string{"--access-mode=open", "postgres://u@h/db"}, nil, "--access-mode: must be restricted or unrestricted"},
 		{"transport", []string{"--transport=websocket", "postgres://u@h/db"}, nil, `--transport: unknown transport "websocket" (valid: stdio, streamable-http, sse)`},
 		{"alias host conflict", []string{"--transport=sse", "--host=127.0.0.1", "--sse-host=0.0.0.0", "--allow-remote", "postgres://u@h/db"}, nil, "--sse-host conflicts with --host"},
@@ -112,7 +114,7 @@ func TestParseOK(t *testing.T) {
 		{"defaults", []string{"postgres://u@h/db"}, nil,
 			func(t *testing.T, c *Config) {
 				want := Config{DSN: "postgres://u@h/db", AccessMode: "restricted", Transport: "stdio", Tools: Groups,
-					MaxRows: 100, MaxRowsLimit: 1000, MaxBytes: 32768, MaxCell: 200, StatementTimeout: 30 * time.Second}
+					MaxRows: 100, MaxRowsLimit: 1000, MaxBytes: 32768, MaxCell: 200, MaxCellLimit: 10000, StatementTimeout: 30 * time.Second}
 				if !reflect.DeepEqual(*c, want) {
 					t.Errorf("config = %+v, want %+v", *c, want)
 				}

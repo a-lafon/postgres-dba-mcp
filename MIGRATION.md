@@ -48,14 +48,15 @@ Statements are still limited to one per call in that mode (see the first table).
 
 ## New flags
 
-These flags did not exist in 0.3.0: `--tools`, `--max-rows`, `--max-rows-limit`, `--max-bytes`, `--max-cell`, `--statement-timeout`, `--allow-function`, `--deny-function`, `--host`, `--port`, `--allow-remote`, `--allowed-hosts`, `--allowed-origins`, and `--version`. The flags `--access-mode`, `--transport`, `--sse-host` and `--sse-port` and the positional URI are kept (`DATABASE_URI` still wins over the argument).
+These flags did not exist in 0.3.0: `--tools`, `--max-rows`, `--max-rows-limit`, `--max-bytes`, `--max-cell`, `--max-cell-limit`, `--statement-timeout`, `--allow-function`, `--deny-function`, `--host`, `--port`, `--allow-remote`, `--allowed-hosts`, `--allowed-origins`, and `--version`. The flags `--access-mode`, `--transport`, `--sse-host` and `--sse-port` and the positional URI are kept (`DATABASE_URI` still wins over the argument).
 
 ## execute_sql
 
 | crystaldba 0.3.0 | postgres-dba-mcp | What to do |
 |---|---|---|
 | `sql` defaults to the string `all`, so a call without `sql` fails with a syntax error. | `sql` is required: `ERROR: invalid arguments: sql is required`. | None. |
-| No row limit. | New optional `max_rows` (default `--max-rows`, at most `--max-rows-limit`). Rows are read through a server-side cursor, never more than `max_rows` + 1. | Use `max_rows` or a `LIMIT`. |
+| No row limit. | New optional `max_rows` (default `--max-rows`, at most `--max-rows-limit`). Rows are read through a server-side cursor, never more than `max_rows` + 1. New optional `max_cell` (default `--max-cell`, at most `--max-cell-limit`) sets the longest cell. | Use `max_rows` or a `LIMIT`, and `max_cell` to read a long value. |
+| A long value comes back whole, however long. | A cell longer than `max_cell` (200 characters by default) is cut and ends with `…[+<n> chars]`, and the footer names its column: `-- 1 cell shortened (body); pass max_cell (up to 10000) to read more`. Long text columns (descriptions, JSON documents, logs) are cut on a plain `SELECT`. | Pass `max_cell` to read a long value whole, or select `substr(col, <from>, <n>)`. |
 | A statement without a result set returns `No results`. | It returns its command tag in the footer, for example `-- INSERT 0 3, 4 ms`. A `RETURNING` result is rendered under the same row and byte bounds. | None. |
 | An empty or comment-only query is sent to the server. | `ERROR: empty query`, with no database access. A syntax error is `ERROR: syntax error: ...`. | None. |
 

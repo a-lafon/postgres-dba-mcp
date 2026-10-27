@@ -95,7 +95,7 @@ func scalar(t *testing.T, conn *pgx.Conn, sql string) string {
 	return s
 }
 
-var durationRe = regexp.MustCompile(`, \d+(\.\d+)? m?s\n$`)
+var durationRe = regexp.MustCompile(`, \d+(\.\d+)? m?s\n`)
 
 // withoutDuration replaces the duration that ends the footer by "<d>".
 func withoutDuration(s string) string { return durationRe.ReplaceAllString(s, ", <d>\n") }
@@ -140,15 +140,36 @@ func TestRestrictedExecution(t *testing.T) {
 		want := "id,txt,empty,num,arr,ts,doc,bin\n" +
 			"1,hello,\"\",532.10,\"{1,2}\",2026-03-02 10:14:00+00,\"{\"\"a\"\": 1}\"," + `\x` + strings.Repeat("ab", 99) + "…[+4512 chars]\n" +
 			"2,\\N,\\N,\\N,\\N,\\N,\\N,\\N\n" +
-			"-- 2 rows, 1 cell shortened, <d>\n"
+			"-- 2 rows, <d>\n" +
+			"-- 1 cell shortened (bin); pass max_cell (up to 10000) to read more\n"
 		if got := withoutDuration(c.ok(t, "SELECT * FROM exec.types ORDER BY id")); got != want {
 			t.Errorf("got %q\nwant %q", got, want)
 		}
 	})
 	t.Run("long cells shortened", func(t *testing.T) {
 		text := c.ok(t, "SELECT id, body FROM exec.docs ORDER BY id LIMIT 3")
-		if n := strings.Count(text, "…[+3450 chars]"); n != 3 || !strings.Contains(text, ", 3 cells shortened, ") {
+		if n := strings.Count(text, "…[+3450 chars]"); n != 3 || !strings.Contains(text, "-- 3 cells shortened (body); ") {
 			t.Errorf("got %q", text)
+		}
+	})
+	t.Run("max_cell", func(t *testing.T) {
+		call := func(maxCell int) (string, bool) {
+			res, err := c.cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "execute_sql",
+				Arguments: map[string]any{"sql": "SELECT repeat('x', 5000) AS txt", "max_cell": maxCell}})
+			if err != nil {
+				t.Fatalf("CallTool: %v", err)
+			}
+			return res.Content[0].(*mcp.TextContent).Text, res.IsError
+		}
+		text := c.ok(t, "SELECT repeat('x', 5000) AS txt")
+		if !strings.Contains(text, "…[+4800 chars]") || !strings.Contains(text, "-- 1 cell shortened (txt); pass max_cell (up to 10000) to read more\n") {
+			t.Errorf("default: got %q", text)
+		}
+		if text, isErr := call(6000); isErr || !strings.Contains(text, strings.Repeat("x", 5000)+"\n") || strings.Contains(text, "shortened") {
+			t.Errorf("max_cell=6000: got %v %q", isErr, text[:100])
+		}
+		if text, isErr := call(10001); !isErr || text != "ERROR: invalid arguments: max_cell 10001 exceeds the server limit 10000" {
+			t.Errorf("max_cell=10001: got %v %q", isErr, text)
 		}
 	})
 	t.Run("unknown column", func(t *testing.T) {

@@ -36,7 +36,7 @@ func TestRender(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := render(tt.res, cfg, tt.maxRows)
+			got, err := render(tt.res, cfg, tt.maxRows, cfg.MaxCell)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -50,7 +50,7 @@ func TestRender(t *testing.T) {
 func TestRenderHeaderOverBudget(t *testing.T) {
 	cfg := testConfig(t, "--max-bytes=1024")
 	res := result{Columns: []string{strings.Repeat("c", 2000)}}
-	if _, err := render(res, cfg, 10); err == nil {
+	if _, err := render(res, cfg, 10, cfg.MaxCell); err == nil {
 		t.Fatal("want an error when the header alone exceeds --max-bytes")
 	}
 }

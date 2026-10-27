@@ -38,13 +38,16 @@ func Register(r *server.Registry) {
 func executeSQLTool(cfg *config.Config, run *db.DB, policy *safesql.Policy) server.Tool {
 	restricted := cfg.AccessMode == config.Restricted
 	desc := "Execute any SQL query"
+	const cells = ". Long cells are shortened; pass max_cell to read more."
 	if restricted {
 		desc = "Execute a read-only SQL query"
 	}
+	desc += cells
 	schema := fmt.Sprintf(`{"type":"object","properties":{`+
 		`"sql":{"type":"string","description":"SQL to run"},`+
-		`"max_rows":{"type":"integer","minimum":1,"description":"Maximum rows to return (default %d, at most %d)"}},`+
-		`"required":["sql"]}`, cfg.MaxRows, cfg.MaxRowsLimit)
+		`"max_rows":{"type":"integer","minimum":1,"description":"Maximum rows to return (default %d, at most %d)"},`+
+		`"max_cell":{"type":"integer","minimum":1,"description":"Maximum characters per cell before it is shortened (default %d, at most %d)"}},`+
+		`"required":["sql"]}`, cfg.MaxRows, cfg.MaxRowsLimit, cfg.MaxCell, cfg.MaxCellLimit)
 	x := &executor{cfg: cfg, run: run, policy: policy}
 	return server.Tool{
 		Group:  "query",
@@ -69,6 +72,7 @@ func (x *executor) handle(ctx context.Context, args json.RawMessage) (string, er
 	var in struct {
 		SQL     string `json:"sql"`
 		MaxRows *int   `json:"max_rows"`
+		MaxCell *int   `json:"max_cell"`
 	}
 	if err := server.Decode(args, &in); err != nil {
 		return "", err
@@ -86,11 +90,21 @@ func (x *executor) handle(ctx context.Context, args json.RawMessage) (string, er
 	case maxRows > x.cfg.MaxRowsLimit:
 		return "", fmt.Errorf("invalid arguments: max_rows %d exceeds the server limit %d", maxRows, x.cfg.MaxRowsLimit)
 	}
+	maxCell := x.cfg.MaxCell
+	if in.MaxCell != nil {
+		maxCell = *in.MaxCell
+	}
+	switch {
+	case maxCell < 1:
+		return "", errors.New("invalid arguments: max_cell must be at least 1")
+	case maxCell > x.cfg.MaxCellLimit:
+		return "", fmt.Errorf("invalid arguments: max_cell %d exceeds the server limit %d", maxCell, x.cfg.MaxCellLimit)
+	}
 	res, err := x.execute(ctx, in.SQL, maxRows)
 	if err != nil {
 		return "", format.WithSQL(err, in.SQL)
 	}
-	return render(res, x.cfg, maxRows)
+	return render(res, x.cfg, maxRows, maxCell)
 }
 
 // execute validates sql for the access mode, then runs it in the matching transaction runner.

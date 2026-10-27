@@ -50,6 +50,7 @@ type Config struct {
 	Tools                         []string // enabled groups, "all" expanded
 	MaxRows, MaxRowsLimit         int
 	MaxBytes, MaxCell             int
+	MaxCellLimit                  int
 	StatementTimeout              time.Duration
 	AllowFunctions, DenyFunctions []string
 	ShowVersion                   bool // --version: Parse returned before any other validation
@@ -86,6 +87,7 @@ func Parse(args []string, env func(string) string) (*Config, error) {
 	maxRowsLimit := &intValue{v: 1000}
 	maxBytes := &intValue{v: 32768}
 	maxCell := &intValue{v: 200}
+	maxCellLimit := &intValue{v: 10000}
 	timeout := &durationValue{v: 30 * time.Second}
 	var allow, deny listValue
 	var allowedHosts, allowedOrigins csvValue
@@ -107,6 +109,7 @@ func Parse(args []string, env func(string) string) (*Config, error) {
 	fs.Var(maxRowsLimit, "max-rows-limit", "")
 	fs.Var(maxBytes, "max-bytes", "")
 	fs.Var(maxCell, "max-cell", "")
+	fs.Var(maxCellLimit, "max-cell-limit", "")
 	fs.Var(timeout, "statement-timeout", "")
 	fs.Var(&allow, "allow-function", "")
 	fs.Var(&deny, "deny-function", "")
@@ -157,18 +160,21 @@ func Parse(args []string, env func(string) string) (*Config, error) {
 	if c.Tools, err = parseTools(tools); err != nil {
 		return nil, err
 	}
-	c.MaxRows, c.MaxRowsLimit, c.MaxBytes, c.MaxCell = maxRows.v, maxRowsLimit.v, maxBytes.v, maxCell.v
+	c.MaxRows, c.MaxRowsLimit, c.MaxBytes, c.MaxCell, c.MaxCellLimit = maxRows.v, maxRowsLimit.v, maxBytes.v, maxCell.v, maxCellLimit.v
 	c.StatementTimeout = timeout.v
 	for _, chk := range []struct {
 		name string
 		v, n int
-	}{{"max-rows", c.MaxRows, 1}, {"max-rows-limit", c.MaxRowsLimit, 1}, {"max-bytes", c.MaxBytes, 1024}, {"max-cell", c.MaxCell, 16}} {
+	}{{"max-rows", c.MaxRows, 1}, {"max-rows-limit", c.MaxRowsLimit, 1}, {"max-bytes", c.MaxBytes, 1024}, {"max-cell", c.MaxCell, 16}, {"max-cell-limit", c.MaxCellLimit, 16}} {
 		if chk.v < chk.n {
 			return nil, fmt.Errorf("--%s: %d is below the minimum %d", chk.name, chk.v, chk.n)
 		}
 	}
 	if c.MaxRows > c.MaxRowsLimit {
 		return nil, fmt.Errorf("--max-rows: %d exceeds --max-rows-limit %d", c.MaxRows, c.MaxRowsLimit)
+	}
+	if c.MaxCell > c.MaxCellLimit {
+		return nil, fmt.Errorf("--max-cell: %d exceeds --max-cell-limit %d", c.MaxCell, c.MaxCellLimit)
 	}
 	if c.StatementTimeout <= 0 {
 		return nil, errors.New("--statement-timeout: must be greater than 0")

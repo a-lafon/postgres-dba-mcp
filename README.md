@@ -246,7 +246,8 @@ Flags can come before or after the database URI, as `--name=value` or `--name va
 | `--max-rows` | `100` | Default row limit of a result (at least 1, at most `--max-rows-limit`) |
 | `--max-rows-limit` | `1000` | Highest `max_rows` a client may ask for |
 | `--max-bytes` | `32768` | Size cap of one tool result in bytes (at least 1024) |
-| `--max-cell` | `200` | Longest cell in characters before it is shortened (at least 16) |
+| `--max-cell` | `200` | Default longest cell in characters before it is shortened (at least 16, at most `--max-cell-limit`) |
+| `--max-cell-limit` | `10000` | Highest `max_cell` a client may ask for |
 | `--statement-timeout` | `30s` | Server-side timeout of every statement (a Go duration, above 0) |
 | `--allow-function` | none | Function name or pattern to allow in restricted mode; repeatable, `schema.name` and `*` wildcards accepted |
 | `--deny-function` | none | Function name or pattern to refuse in restricted mode; repeatable, same syntax |
@@ -283,7 +284,7 @@ Tools return plain text, never structured JSON.
 
 - Tables are CSV with a header row. A field is quoted when it contains a comma or a double quote, has a leading or trailing space, or is empty.
 - `NULL` is written `\N`. Newlines, carriage returns and tabs inside a value are written `\n`, `\r` and `\t`, so every record is one line.
-- A cell longer than `--max-cell` characters is cut and ends with `…[+<n> chars]`; this includes `bytea` values (hex text).
+- A cell longer than `--max-cell` characters is cut and ends with `…[+<n> chars]`; this includes `bytea` values (hex text). `execute_sql` accepts `max_cell` (default `--max-cell`, at most `--max-cell-limit`) and, when a cell is shortened, adds a footer line such as `-- 1 cell shortened (txt); pass max_cell (up to 10000) to read more`.
 - A `tsvector` value is summarized as `[tsvector: <n> lexemes]` (`[tsvector: 1 lexeme]` for one). Select `col::text` to read its content.
 - Every table ends with a footer starting with `--`: `-- 12 rows, 38 ms`, `-- 100 rows, truncated (more than 100), 38 ms`, or `-- 57 rows, truncated (32768-byte limit), 38 ms`. Truncated results add a line suggesting to refine the query. Statements with no rows end with their command tag (`-- UPDATE 3, 3 ms`).
 - A result never exceeds `--max-bytes`, and rows never exceed `max_rows` (default `--max-rows`).

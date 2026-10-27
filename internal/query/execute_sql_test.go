@@ -42,9 +42,9 @@ func TestToolDefinition(t *testing.T) {
 		desc, maxRows                 string
 		readOnlyHint, destructiveHint bool
 	}{
-		{"restricted", []string{"--max-rows=100", "--max-rows-limit=1000"}, "Execute a read-only SQL query",
+		{"restricted", []string{"--max-rows=100", "--max-rows-limit=1000"}, "Execute a read-only SQL query. Long cells are shortened; pass max_cell to read more.",
 			"Maximum rows to return (default 100, at most 1000)", true, false},
-		{"unrestricted", []string{"--access-mode=unrestricted", "--max-rows=10", "--max-rows-limit=50"}, "Execute any SQL query",
+		{"unrestricted", []string{"--access-mode=unrestricted", "--max-rows=10", "--max-rows-limit=50"}, "Execute any SQL query. Long cells are shortened; pass max_cell to read more.",
 			"Maximum rows to return (default 10, at most 50)", false, true},
 	}
 	for _, tt := range tests {
@@ -100,6 +100,9 @@ func TestToolDefinition(t *testing.T) {
 			if p := schema.Properties["max_rows"]; p.Type != "integer" || p.Description != tt.maxRows || p.Minimum == nil || *p.Minimum != 1 {
 				t.Errorf("max_rows property = %+v", p)
 			}
+			if p := schema.Properties["max_cell"]; p.Type != "integer" || p.Description != "Maximum characters per cell before it is shortened (default 200, at most 10000)" || p.Minimum == nil || *p.Minimum != 1 {
+				t.Errorf("max_cell property = %+v", p)
+			}
 		})
 	}
 }
@@ -114,6 +117,8 @@ func TestArgumentValidation(t *testing.T) {
 		{"max_rows zero", `{"sql":"SELECT 1","max_rows":0}`, "invalid arguments: max_rows must be at least 1"},
 		{"max_rows negative", `{"sql":"SELECT 1","max_rows":-3}`, "invalid arguments: max_rows must be at least 1"},
 		{"max_rows above limit", `{"sql":"SELECT 1","max_rows":5000}`, "invalid arguments: max_rows 5000 exceeds the server limit 1000"},
+		{"max_cell zero", `{"sql":"SELECT 1","max_cell":0}`, "invalid arguments: max_cell must be at least 1"},
+		{"max_cell above limit", `{"sql":"SELECT 1","max_cell":20000}`, "invalid arguments: max_cell 20000 exceeds the server limit 10000"},
 		{"unknown field", `{"sql":"SELECT 1","limit":3}`, `invalid arguments: unknown field "limit"`},
 	}
 	for _, mode := range []string{config.Restricted, config.Unrestricted} {

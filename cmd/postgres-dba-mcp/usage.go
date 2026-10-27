@@ -14,6 +14,7 @@ Flags:
   --max-rows-limit     highest max_rows a client may ask for (default 1000)
   --max-bytes          size cap of one tool result in bytes, at least 1024 (default 32768)
   --max-cell           longest cell in characters before it is shortened, at least 16 (default 200)
+  --max-cell-limit     highest max_cell a client may ask for (default 10000)
   --statement-timeout  server-side timeout of every statement, a Go duration above 0 (default 30s)
   --allow-function     function name or pattern to allow in restricted mode; repeatable
   --deny-function      function name or pattern to refuse in restricted mode; repeatable

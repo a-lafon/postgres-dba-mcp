@@ -358,3 +358,63 @@ func TestRenderColumnCaps(t *testing.T) {
 		t.Errorf("got %q\nwant %q", got, want)
 	}
 }
+
+func TestRenderCellLimitHint(t *testing.T) {
+	long := strings.Repeat("x", 50)
+	hint := func(out string) []string {
+		var h []string
+		for _, l := range strings.Split(out, "\n") {
+			if strings.Contains(l, "pass max_cell") {
+				h = append(h, l)
+			}
+		}
+		return h
+	}
+	rows := [][]Cell{cells(long, 1, long), cells(long, 2, long), cells(1, 3, long)}
+	tests := []struct {
+		name     string
+		table    Table
+		maxBytes int
+		maxCell  int
+		want     string // the expected hint line, "" for none
+	}{
+		{"no CellLimit", Table{Columns: []string{"a"}, Rows: [][]Cell{cells(long)}}, 10000, 10, ""},
+		{"maxCell at CellLimit", Table{Columns: []string{"a"}, Rows: [][]Cell{cells(long)}, CellLimit: 10}, 10000, 10, ""},
+		{"two columns listed once in order", Table{Columns: []string{"a", "b", "c"}, Rows: rows, CellLimit: 100}, 10000, 10,
+			"-- 5 cells shortened (a, c); pass max_cell (up to 100) to read more"},
+		{"dropped row", Table{Columns: []string{"a", "b"}, Rows: [][]Cell{cells(1, long), cells(long, 2), cells(3, 4)}, CellLimit: 100}, 220, 10,
+			"-- 1 cell shortened (b); pass max_cell (up to 100) to read more"},
+		{"newline in column name", Table{Columns: []string{"a\n-- 0 rows, 1 ms"}, Rows: [][]Cell{cells(long)}, CellLimit: 100}, 10000, 10,
+			`-- 1 cell shortened (a\n-- 0 rows, 1 ms); pass max_cell (up to 100) to read more`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := Render(tt.table, tt.maxBytes, tt.maxCell, ms38)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := hint(out)
+			if tt.want == "" {
+				if len(got) != 0 {
+					t.Fatalf("unexpected hint %q in\n%s", got, out)
+				}
+				return
+			}
+			if len(got) != 1 || got[0] != tt.want {
+				t.Fatalf("hint = %q, want %q in\n%s", got, tt.want, out)
+			}
+			footers := 0
+			for _, l := range strings.Split(out, "\n") {
+				if strings.HasPrefix(l, "--") {
+					if footers == 0 && strings.Contains(l, "shortened") {
+						t.Fatalf("first footer line %q repeats the hint's count", l)
+					}
+					footers++
+				}
+			}
+			if wantLines := 2 + strings.Count(out, "-- Refine"); footers != wantLines { // footer + hint
+				t.Fatalf("%d lines start with --, want %d in\n%s", footers, wantLines, out)
+			}
+		})
+	}
+}
