@@ -18,7 +18,13 @@ import (
 
 const (
 	readHeaderTimeout = 10 * time.Second
-	shutdownGrace     = 10 * time.Second
+	// readTimeout bounds reading one request, body included, so a client that
+	// dribbles cannot hold a connection open; it does not bound the response.
+	readTimeout = 30 * time.Second
+	// idleTimeout is explicit because net/http falls back to ReadTimeout for an
+	// idle kept-alive connection; 30 s would close one between two tool calls.
+	idleTimeout   = 2 * time.Minute
+	shutdownGrace = 10 * time.Second
 )
 
 // Serve listens on cfg.Host:cfg.Port and serves reg's MCP server over cfg.Transport until ctx is canceled,
@@ -53,7 +59,7 @@ func serve(ctx context.Context, ln net.Listener, cfg *config.Config, reg *server
 		mux.Handle(path, mcp.NewStreamableHTTPHandler(getServer, &mcp.StreamableHTTPOptions{Stateless: true, DisableLocalhostProtection: true}))
 	}
 	g := newGuard(cfg.Host, port, cfg.AllowedHosts, cfg.AllowedOrigins, logf)
-	srv := &http.Server{Handler: g.wrap(mux), ReadHeaderTimeout: readHeaderTimeout}
+	srv := &http.Server{Handler: g.wrap(mux), ReadHeaderTimeout: readHeaderTimeout, ReadTimeout: readTimeout, IdleTimeout: idleTimeout}
 	if !config.IsLoopback(cfg.Host) {
 		logf("WARNING: HTTP transport bound to %s:%s without authentication; anyone who can reach it can use the database with this role", cfg.Host, port)
 	}
