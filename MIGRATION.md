@@ -84,6 +84,7 @@ These flags did not exist in 0.3.0: `--tools`, `--max-rows`, `--max-rows-limit`,
 | With `$1`, `$2` placeholders: on PG 16+ without `LIKE` a generic plan is used, otherwise values are guessed and substituted (`LIMIT $n` becomes `limit 100`). | A generic plan on every supported version (PG 14 and 15 through `PREPARE` and `plan_cache_mode = force_generic_plan`). No value is guessed. The header ends with `, generic plan ($n parameters)`. `analyze` with `$n` is refused. | Use `analyze` with literal values. |
 | A nested `EXPLAIN` fails in the server. | `ERROR: pass the query without EXPLAIN; use the analyze and verbose parameters instead`. | None. |
 | Errors are wrapped: `Error: Error executing explain plan: ...`. | Postgres errors come back through the common error format, with SQLSTATE, hint and position. | None. |
+| The output ends with the plan. | The output ends with a footer `-- plan, <duration>`, the wall time of the whole call. | None. |
 | The description ends after the cost estimates. | The description adds `Queries with $n parameters get a generic plan.` | None. |
 
 ## get_top_queries

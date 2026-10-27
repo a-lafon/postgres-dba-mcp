@@ -151,14 +151,14 @@ func TestRenderSummary(t *testing.T) {
 
 func TestFit(t *testing.T) {
 	lines := []string{"aaaaaaaaaa", "bbbbbbbbbb", "cccccccccc", "dddddddddd"}
-	if got := fit(lines, 100); got != strings.Join(lines, "\n") {
+	if got := fit(lines, 140); got != strings.Join(lines, "\n") {
 		t.Fatalf("got %q", got)
 	}
-	marker := "-- truncated (40-byte limit)"
-	if got := fit(lines, 40); got != "aaaaaaaaaa\n"+marker || len(got) > 40 {
+	marker := "-- truncated (80-byte limit)" // the limit shown is the configured one, not the budget
+	if got := fit(lines, 80); got != "aaaaaaaaaa\n"+marker || len(got) > 80-footerReserve {
 		t.Fatalf("got %q", got)
 	}
-	if got := fit([]string{strings.Repeat("z", 500)}, 40); got != marker {
+	if got := fit([]string{strings.Repeat("z", 500)}, 80); got != marker {
 		t.Fatalf("got %q", got)
 	}
 }

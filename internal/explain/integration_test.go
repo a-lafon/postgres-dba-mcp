@@ -99,6 +99,16 @@ func TestSlowQuery(t *testing.T) {
 	}
 }
 
+func TestFooter(t *testing.T) {
+	re := regexp.MustCompile(`\n-- plan, [\d.]+ ?(µs|ms|s)\n$`)
+	for _, a := range []bool{false, true} {
+		out := ok(t, config.Restricted, map[string]any{"sql": slow, "analyze": a})
+		if !re.MatchString(out) {
+			t.Fatalf("analyze=%v: no footer:\n%s", a, out)
+		}
+	}
+}
+
 // S13
 func TestHypotheticalIndex(t *testing.T) {
 	out := ok(t, config.Restricted, map[string]any{"sql": slow,

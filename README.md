@@ -287,6 +287,7 @@ Tools return plain text, never structured JSON.
 - A cell longer than `--max-cell` characters is cut and ends with `…[+<n> chars]`; this includes `bytea` values (hex text). `execute_sql` accepts `max_cell` (default `--max-cell`, at most `--max-cell-limit`) and, when a cell is shortened, adds a footer line such as `-- 1 cell shortened (txt); pass max_cell (up to 10000) to read more`.
 - A `tsvector` value is summarized as `[tsvector: <n> lexemes]` (`[tsvector: 1 lexeme]` for one). Select `col::text` to read its content.
 - Every table ends with a footer starting with `--`: `-- 12 rows, 38 ms`, `-- 100 rows, truncated (more than 100), 38 ms`, or `-- 57 rows, truncated (32768-byte limit), 38 ms`. Truncated results add a line suggesting to refine the query. Statements with no rows end with their command tag (`-- UPDATE 3, 3 ms`).
+- `explain_query` ends with a footer `-- plan, <duration>`, the wall time of the whole call.
 - A result never exceeds `--max-bytes`, and rows never exceed `max_rows` (default `--max-rows`).
 - Errors come back as a tool error (`isError: true`) whose text starts with `ERROR: `, followed by `(SQLSTATE <code>)`, `DETAIL:`, `HINT:` and `POSITION:` lines when Postgres provides them.
 

@@ -111,16 +111,18 @@ func nodeLine(s shown, analyze bool) string {
 }
 
 // fit joins lines, or cuts them after the last whole line that fits with the truncation line.
+// maxBytes is the configured limit; footerReserve of it is left to the footer the caller appends.
 func fit(lines []string, maxBytes int) string {
+	budget := maxBytes - footerReserve
 	out := strings.Join(lines, "\n")
-	if len(out) <= maxBytes {
+	if len(out) <= budget {
 		return out
 	}
 	marker := fmt.Sprintf("-- truncated (%d-byte limit)", maxBytes)
 	size := len(marker)
 	kept := 0
 	for _, l := range lines {
-		if size+len(l)+1 > maxBytes {
+		if size+len(l)+1 > budget {
 			break
 		}
 		size += len(l) + 1

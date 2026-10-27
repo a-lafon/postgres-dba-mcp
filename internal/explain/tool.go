@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/a-lafon/postgres-dba-mcp/internal/config"
 	"github.com/a-lafon/postgres-dba-mcp/internal/db"
+	"github.com/a-lafon/postgres-dba-mcp/internal/format"
 	"github.com/a-lafon/postgres-dba-mcp/internal/hypo"
 	"github.com/a-lafon/postgres-dba-mcp/internal/safesql"
 	"github.com/a-lafon/postgres-dba-mcp/internal/server"
@@ -35,6 +37,9 @@ Examples: [
 If there is no hypothetical index, you can pass an empty list.`
 	verboseDescription = "When true, returns the full PostgreSQL text plan instead of the summary."
 )
+
+// footerReserve leaves room in the byte budget for the "-- plan, <duration>" footer line.
+const footerReserve = 40
 
 // inputSchema is the explicit input schema of explain_query.
 var inputSchema = mustJSON(map[string]any{
@@ -167,6 +172,7 @@ func explain(ctx context.Context, cfg *config.Config, policy *safesql.Policy, d 
 	if err != nil {
 		return "", err
 	}
+	start := time.Now()
 	var out string
 	err = d.ReadOnly(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
@@ -176,7 +182,7 @@ func explain(ctx context.Context, cfg *config.Config, policy *safesql.Policy, d 
 	if err != nil {
 		return "", err
 	}
-	return out, nil
+	return out + "\n" + format.RenderTag("plan", time.Since(start)), nil
 }
 
 func explainTx(ctx context.Context, tx pgx.Tx, maxBytes int, in args, idxs []hypo.Index) (string, error) {
