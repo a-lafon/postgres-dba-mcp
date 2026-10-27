@@ -147,6 +147,8 @@ Every statement is sent to `execute_sql` in restricted mode. An attack counts as
 
 ## Agent tasks (9 tasks × 3 runs per server)
 
+These runs are from 0.1.0, before the volatility gate that 0.2.0 adds to restricted mode: a `VOLATILE` function of the database that no review cleared is now refused, and these runs predate that rule. crystaldba is pinned by image digest, so its column is unaffected.
+
 Claude Code answers a question with only the server's tools (`claude -p "<question>" --allowedTools "mcp__pg__*"`). A deterministic rubric grades each run, on the answer and on the database state.
 
 | Task | Question | Solved dba | Solved crystal |

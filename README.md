@@ -34,7 +34,7 @@ Against crystaldba/postgres-mcp 0.3.0 on the same PostgreSQL 17 database and the
 - **61 % fewer** tokens per `execute_sql` response: median of the 4 scenarios both servers answered (S01, S04, S05, S06). Every result is capped at 32 kB, where crystaldba returns up to 268k tokens or fails;
 - **131 of 131** attack statements refused in restricted mode, where crystaldba executes 10;
 - **16 MB** of memory against 248 MB, both in a Linux container; cold start of **11 ms** for the binary run directly, against 1.4 s for crystaldba including `docker run`;
-- **27 of 27** agent tasks solved with Claude Code, against 25 of 27.
+- **27 of 27** agent tasks solved with Claude Code, against 25 of 27, measured on 0.1.0, before the volatility gate.
 
 The other side: the nine tool definitions are 25 % larger (2459 tokens against 1965), and the tokens of a whole agent task are comparable.
 
