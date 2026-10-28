@@ -87,8 +87,8 @@ func callErr(t *testing.T, dsn, tool, args string) string {
 
 func TestListObjectsDefaultAndTables(t *testing.T) {
 	want := "name,kind,rows,size\n" +
-		"customers,table,1.0k,<size>\nevents_p,partitioned (2 partitions),1.0k,<size>\n" +
-		"orders,table,3.0k,<size>\nwide,table,10,<size>\n-- 4 rows, <ms>\n"
+		"customers,table,~1.0k,<size>\nevents_p,partitioned (2 partitions),~1.0k,<size>\n" +
+		"orders,table,~3.0k,<size>\nwide,table,~10,<size>\n-- 4 rows, <ms>\n"
 	expect(t, callOK(t, "list_objects", `{"schema_name":"schema_tools"}`), want)
 	expect(t, callOK(t, "list_objects", `{"schema_name":"schema_tools","object_type":"table"}`), want)
 }

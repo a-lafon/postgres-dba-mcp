@@ -32,7 +32,7 @@ func renderObjects(res objectList, cfg *config.Config) (string, error) {
 		for _, r := range res.Tables {
 			var rows format.Cell
 			if r.Rows != nil {
-				rows = cell(format.Approx(*r.Rows))
+				rows = cell("~" + format.Approx(*r.Rows))
 			}
 			t.Rows = append(t.Rows, []format.Cell{cell(r.Name), cell(r.Kind), rows, cell(format.Size(r.Size))})
 		}

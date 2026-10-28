@@ -68,7 +68,7 @@ func TestRenderObjects(t *testing.T) {
 	}{
 		{"tables", objectList{Type: "table", Tables: []tableRow{
 			{"a", "table", &n, 2048}, {"b", "partitioned", nil, 0},
-		}}, "name,kind,rows,size\na,table,1.5k,2.0 kB\nb,partitioned,\\N,0 bytes\n-- 2 rows, 0.0 ms\n"},
+		}}, "name,kind,rows,size\na,table,~1.5k,2.0 kB\nb,partitioned,\\N,0 bytes\n-- 2 rows, 0.0 ms\n"},
 		{"views", objectList{Type: "view", Views: []viewRow{{"v", "view"}, {"m", "materialized"}}},
 			"name,kind\nv,view\nm,materialized\n-- 2 rows, 0.0 ms\n"},
 		{"sequences", objectList{Type: "sequence", Sequences: []sequenceRow{
