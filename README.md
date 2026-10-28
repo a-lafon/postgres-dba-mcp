@@ -79,13 +79,15 @@ With Docker (linux/amd64 and linux/arm64, non-root, no shell):
 docker run -i --rm -e DATABASE_URI ghcr.io/a-lafon/postgres-dba-mcp:latest
 ```
 
+`localhost` in the URI then means the container itself: on Docker Desktop use `host.docker.internal`, on Linux `--network=host` (see below).
+
 From a release archive, Windows included: download the archive for your system from the [releases page](https://github.com/a-lafon/postgres-dba-mcp/releases) (darwin, linux and windows on amd64; darwin and linux also on arm64), check it against `checksums.txt` (SHA-256), and put the `postgres-dba-mcp` binary on your `PATH`.
 
 With the Go toolchain: `go install github.com/a-lafon/postgres-dba-mcp/cmd/postgres-dba-mcp@latest`.
 
 The Linux binaries and the image parse SQL with the native PostgreSQL parser (about 20 MB at start). The macOS and Windows binaries, and a plain `go install`, use a WASM copy of it, which peaks near 300 MB of memory at start and hands it back afterwards. With a C compiler, `CGO_ENABLED=1 go install -tags pgquery_cgo,netgo,osusergo github.com/a-lafon/postgres-dba-mcp/cmd/postgres-dba-mcp@latest` builds the native one.
 
-Check the install with `postgres-dba-mcp --version`.
+Check the install with `postgres-dba-mcp --version`. When the shell does not find it, `~/.local/bin` is not on your `PATH`: add it, or register the server with the full path.
 
 ## Quick start with Claude Code
 
