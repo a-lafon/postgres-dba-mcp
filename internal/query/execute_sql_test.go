@@ -168,7 +168,7 @@ func TestRestrictedRefusalHint(t *testing.T) {
 		wantHint  bool
 	}{
 		{"write", "DELETE FROM t", true},
-		{"denied function", "SELECT pg_read_file('/etc/passwd')", true},
+		{"denied function", "SELECT pg_read_file('/etc/passwd')", false},
 		{"multi", "SELECT 1; DELETE FROM t", false},
 		{"syntax error", "SELEC 1", false},
 	}

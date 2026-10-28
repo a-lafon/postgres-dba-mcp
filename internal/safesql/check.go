@@ -51,6 +51,15 @@ const (
 	errNotAllowed = "restricted mode: %s statements are not allowed (allowed: SELECT, VALUES, TABLE, WITH, EXPLAIN, SHOW)"
 )
 
+// DeniedFuncError is the refusal of a function call the policy denies. It is
+// a type, not a message, so that a caller can tell it from a refusal the
+// access mode alone decides.
+type DeniedFuncError struct{ Func string }
+
+func (e *DeniedFuncError) Error() string {
+	return fmt.Sprintf("restricted mode: function %s() is not allowed", e.Func)
+}
+
 // Check accepts sql only when it is exactly one SELECT-like statement (see
 // the sql-safety spec) whose every function call p allows. The error text is
 // the message returned to the client.
@@ -95,7 +104,7 @@ func Check(sql string, p *Policy) (Statement, error) {
 	for _, c := range funcCalls(stmts[0]) {
 		switch p.decide(c) {
 		case denied:
-			return Statement{}, fmt.Errorf("restricted mode: function %s() is not allowed", c.full)
+			return Statement{}, &DeniedFuncError{Func: c.full}
 		case undecided:
 			key := c.rawSchema + "." + c.rawName
 			if !seen[key] {

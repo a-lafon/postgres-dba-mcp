@@ -130,8 +130,14 @@ func (x *executor) timeoutHint(err error) error {
 
 // unrestrictedHint names the flag when unrestricted mode would have run sql, which is the whole
 // difference for someone whose previous server ran in that mode by default. Parsing to exactly one
-// statement is the condition, since that is all unrestricted mode asks of a statement.
+// statement is the condition, since that is all unrestricted mode asks of a statement. A denied
+// function is the exception: those are denied because a read-only transaction does not stop them, so
+// naming the flag that drops that transaction would advise undoing the protection just refused.
 func unrestrictedHint(sql string, err error) error {
+	var denied *safesql.DeniedFuncError
+	if errors.As(err, &denied) {
+		return err
+	}
 	if count, _, cErr := safesql.Classify(sql); cErr != nil || count != 1 {
 		return err
 	}
