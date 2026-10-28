@@ -43,6 +43,7 @@ func executeSQLTool(cfg *config.Config, run *db.DB, policy *safesql.Policy) serv
 		desc = "Execute a read-only SQL query"
 	}
 	desc += cells
+	desc += fmt.Sprintf(" The result is also capped at %d bytes, whatever max_rows says; the footer says so when it is cut.", cfg.MaxBytes)
 	schema := fmt.Sprintf(`{"type":"object","properties":{`+
 		`"sql":{"type":"string","description":"SQL to run"},`+
 		`"max_rows":{"type":"integer","minimum":1,"description":"Maximum rows to return (default %d, at most %d)"},`+

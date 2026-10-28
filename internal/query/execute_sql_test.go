@@ -42,9 +42,9 @@ func TestToolDefinition(t *testing.T) {
 		desc, maxRows                 string
 		readOnlyHint, destructiveHint bool
 	}{
-		{"restricted", []string{"--max-rows=100", "--max-rows-limit=1000"}, "Execute a read-only SQL query. Long cells are shortened; pass max_cell to read more.",
+		{"restricted", []string{"--max-rows=100", "--max-rows-limit=1000"}, "Execute a read-only SQL query. Long cells are shortened; pass max_cell to read more. The result is also capped at 32768 bytes, whatever max_rows says; the footer says so when it is cut.",
 			"Maximum rows to return (default 100, at most 1000)", true, false},
-		{"unrestricted", []string{"--access-mode=unrestricted", "--max-rows=10", "--max-rows-limit=50"}, "Execute any SQL query. Long cells are shortened; pass max_cell to read more.",
+		{"unrestricted", []string{"--access-mode=unrestricted", "--max-rows=10", "--max-rows-limit=50", "--max-bytes=2048"}, "Execute any SQL query. Long cells are shortened; pass max_cell to read more. The result is also capped at 2048 bytes, whatever max_rows says; the footer says so when it is cut.",
 			"Maximum rows to return (default 10, at most 50)", false, true},
 	}
 	for _, tt := range tests {
