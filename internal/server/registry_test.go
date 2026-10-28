@@ -111,7 +111,8 @@ func TestInitialize(t *testing.T) {
 				"A tsvector value is shown as [tsvector: <n> lexemes]; select col::text to read it.\n" +
 				"The last line starts with \"--\" and reports row count, truncation and timing.\n" +
 				"If a result is truncated, refine the query (WHERE, LIMIT, aggregates) rather than asking for more rows.\n" +
-				"A long cell is cut and ends with …[+<n> chars]; execute_sql takes max_cell to read more of it."
+				"A long cell is cut and ends with …[+<n> chars]; execute_sql takes max_cell to read more of it.\n" +
+				"When a column holds jsonb or long text, pass max_cell on the first call: reading the same row twice costs more than one wider call."
 			if res.Instructions != want {
 				t.Errorf("instructions = %q, want %q", res.Instructions, want)
 			}
