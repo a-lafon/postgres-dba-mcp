@@ -211,3 +211,51 @@ func TestMapReadError(t *testing.T) {
 		})
 	}
 }
+
+func TestRenderHiddenQueryTexts(t *testing.T) {
+	mk := func(sort string, texts ...string) topQueries {
+		res := topQueries{SortBy: sort, Database: "d", User: "app", Since: "unknown", Columns: []string{"calls", "query"}}
+		for _, q := range texts {
+			res.Rows = append(res.Rows, cells("1", q))
+		}
+		return res
+	}
+	const hint = "grant pg_read_all_stats to app to read them"
+	for _, c := range []struct {
+		name string
+		res  topQueries
+		want string // substring, "" for no hint at all
+	}{
+		{"all masked", mk("total_time", "<insufficient privilege>", "<insufficient privilege>"), "\n-- query texts hidden: " + hint + "\n"},
+		{"single row masked", mk("total_time", "<insufficient privilege>"), "\n-- query texts hidden: " + hint + "\n"},
+		{"some masked", mk("total_time", "<insufficient privilege>", "SELECT 1", "<insufficient privilege>"), "\n-- 2 of 3 query texts hidden: " + hint + "\n"},
+		{"one of several masked", mk("total_time", "<insufficient privilege>", "SELECT 1"), "\n-- 1 of 2 query texts hidden: " + hint + "\n"},
+		{"none masked", mk("total_time", "SELECT 1"), ""},
+	} {
+		got, err := renderTopQueries(c.res, parse(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.want != "" && !strings.Contains(got, c.want) {
+			t.Errorf("%s: want %q in %q", c.name, c.want, got)
+		}
+		if c.want == "" && strings.Contains(got, "hidden") {
+			t.Errorf("%s: unexpected hint in %q", c.name, got)
+		}
+	}
+}
+
+func TestRenderPrefixNamesCannotForgeLine(t *testing.T) {
+	res := topQueries{SortBy: "total_time", Database: "d\n-- forged", User: "a\n-- forged", Since: "unknown",
+		Columns: []string{"calls", "query"}, Rows: [][]format.Cell{cells("1", "<insufficient privilege>")}}
+	got, err := renderTopQueries(res, parse(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(got, "\n-- forged"); n != 0 {
+		t.Errorf("%d forged line(s) in %q", n, got)
+	}
+	if lines := strings.Split(got, "\n"); !strings.HasPrefix(lines[0], "-- by total_time") || !strings.HasPrefix(lines[1], "-- query texts hidden") || lines[2] != "calls,query" {
+		t.Errorf("prefix is not exactly two lines: %q", got)
+	}
+}

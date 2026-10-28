@@ -63,11 +63,11 @@ type args struct {
 
 // topQueries is the computed result of get_top_queries.
 type topQueries struct {
-	SortBy, Database, Since string
-	Columns                 []string
-	Rows                    [][]format.Cell
-	More                    bool
-	Elapsed                 time.Duration
+	SortBy, Database, User, Since string
+	Columns                       []string
+	Rows                          [][]format.Cell
+	More                          bool
+	Elapsed                       time.Duration
 }
 
 // parseArgs decodes and validates the raw tool arguments, applying the defaults.
@@ -151,7 +151,7 @@ func getTopQueries(ctx context.Context, d statsDB, a args) (topQueries, error) {
 	res := topQueries{SortBy: a.SortBy}
 	start := time.Now()
 	err = d.ReadOnly(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, contextFor(info.Extensions["pg_stat_statements"])).Scan(&res.Database, &res.Since); err != nil {
+		if err := tx.QueryRow(ctx, contextFor(info.Extensions["pg_stat_statements"])).Scan(&res.Database, &res.User, &res.Since); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, querySQL(a.SortBy), a.Limit+1)

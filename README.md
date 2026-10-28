@@ -277,7 +277,7 @@ Tools belong to a group, which `--tools` can switch off.
 - `get_object_details` (schema): show a table, view, sequence or extension in a compact form (columns, keys, indexes, constraints, triggers).
 - `execute_sql` (query): run one SQL statement, read-only in restricted mode, with a bounded result.
 - `explain_query` (explain): summarize the plan of a query, optionally with `analyze` (SELECT only), `verbose` text, or hypothetical indexes.
-- `get_top_queries` (stats): rank the statements of the current database from `pg_stat_statements` by resources, total time or mean time.
+- `get_top_queries` (stats): rank the statements of the current database from `pg_stat_statements` by resources, total time or mean time. Without `pg_read_all_stats`, the query text of other roles is masked by PostgreSQL and the output says so.
 - `analyze_db_health` (health): check indexes, connections, vacuum and dead rows, sequences, replication, cache hit rates and constraints, and report the problems only.
 - `analyze_query_indexes` (index): recommend indexes for up to 10 given queries.
 - `analyze_workload_indexes` (index): recommend indexes for the frequent slow statements of `pg_stat_statements`.
