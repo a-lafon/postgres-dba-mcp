@@ -59,6 +59,10 @@ func callListSchemas(t *testing.T, args ...string) string {
 func TestListSchemasFixture(t *testing.T) {
 	text := callListSchemas(t)
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	if lines[0] != "-- 1 schema not readable by pgdba_ro: no_usage" { // seed 62_unreadable.sql
+		t.Fatalf("note = %q", lines[0])
+	}
+	lines = lines[1:]
 	if lines[0] != "schema_name,owner,type,tables" {
 		t.Fatalf("header = %q", lines[0])
 	}

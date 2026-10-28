@@ -4,7 +4,9 @@ SELECT n.nspname::text AS schema_name,
        s.type,
        CASE WHEN s.type = 'user'
             THEN (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid AND c.relkind IN ('r', 'p'))
-       END AS tables
+       END AS tables,
+       coalesce(has_schema_privilege(n.oid, 'USAGE'), false) AS readable,
+       current_user::text AS role
 FROM pg_namespace n
 CROSS JOIN LATERAL (
     SELECT CASE WHEN n.nspname = 'information_schema' OR left(n.nspname, 3) = 'pg_' THEN 'system' ELSE 'user' END AS type

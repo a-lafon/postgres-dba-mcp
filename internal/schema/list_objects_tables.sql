@@ -13,7 +13,9 @@ SELECT c.relname::text AS name,
        CASE WHEN c.relkind = 'p'
             THEN coalesce((SELECT sum(pg_total_relation_size(t.relid)) FROM pg_partition_tree(c.oid) t WHERE t.isleaf), 0)::bigint
             ELSE pg_total_relation_size(c.oid)
-       END AS size
+       END AS size,
+       coalesce(has_schema_privilege(c.relnamespace, 'USAGE') AND has_table_privilege(c.oid, 'SELECT'), false) AS readable,
+       current_user::text AS role
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
 WHERE n.nspname = $1 AND c.relkind IN ('r', 'p') AND NOT c.relispartition

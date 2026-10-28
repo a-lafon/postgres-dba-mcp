@@ -27,6 +27,8 @@ type readOnlyRunner interface {
 type schemaRow struct {
 	Name, Owner, Type string
 	Tables            *int64 // nil for system schemas
+	Readable          bool
+	Role              string // current_user, named in the unreadable note
 }
 
 // schemaList is the computed result of list_schemas.
@@ -71,7 +73,7 @@ func listSchemas(ctx context.Context, run readOnlyRunner, maxRows int) (schemaLi
 		defer rows.Close()
 		for rows.Next() {
 			var r schemaRow
-			if err := rows.Scan(&r.Name, &r.Owner, &r.Type, &r.Tables); err != nil {
+			if err := rows.Scan(&r.Name, &r.Owner, &r.Type, &r.Tables, &r.Readable, &r.Role); err != nil {
 				return err
 			}
 			res.Rows = append(res.Rows, r)

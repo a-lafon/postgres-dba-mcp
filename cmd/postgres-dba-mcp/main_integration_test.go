@@ -366,7 +366,7 @@ func TestListSchemasEndToEnd(t *testing.T) {
 	if isErr {
 		t.Fatalf("list_schemas failed: %s", text)
 	}
-	if !strings.HasPrefix(text, "schema_name,owner,type,tables\n") || !strings.Contains(text, "\npublic,") {
+	if !strings.HasPrefix(text, "-- 1 schema not readable by pgdba_ro: no_usage\nschema_name,owner,type,tables\n") || !strings.Contains(text, "\npublic,") {
 		t.Errorf("text = %q", text)
 	}
 	if !regexp.MustCompile(`\n-- \d+ rows, \d+ ms\n$`).MatchString(text) {

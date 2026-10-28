@@ -67,9 +67,9 @@ func TestRenderObjects(t *testing.T) {
 		want string
 	}{
 		{"tables", objectList{Type: "table", Tables: []tableRow{
-			{"a", "table", &n, 2048}, {"b", "partitioned", nil, 0},
+			{"a", "table", &n, 2048, true, "ro"}, {"b", "partitioned", nil, 0, true, "ro"},
 		}}, "name,kind,rows,size\na,table,~1.5k,2.0 kB\nb,partitioned,\\N,0 bytes\n-- 2 rows, 0.0 ms\n"},
-		{"views", objectList{Type: "view", Views: []viewRow{{"v", "view"}, {"m", "materialized"}}},
+		{"views", objectList{Type: "view", Views: []viewRow{{"v", "view", true, "ro"}, {"m", "materialized", true, "ro"}}},
 			"name,kind\nv,view\nm,materialized\n-- 2 rows, 0.0 ms\n"},
 		{"sequences", objectList{Type: "sequence", Sequences: []sequenceRow{
 			{"s", "bigint", &last, 1, 9223372036854775807, 10}, {"u", "integer", nil, 1, 100, 1}, {"d", "integer", &down, 1, 100, -1},
@@ -266,5 +266,48 @@ func TestArticle(t *testing.T) {
 		if got := article(in); got != want {
 			t.Errorf("article(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestUnreadableNote(t *testing.T) {
+	for _, c := range []struct {
+		noun  string
+		names []string
+		want  string
+	}{
+		{"table", nil, ""},
+		{"table", []string{"a"}, "-- 1 table not readable by ro: a"},
+		{"view", []string{"a", "b"}, "-- 2 views not readable by ro: a, b"},
+		{"table", []string{"a", "b", "c", "d", "e", "f", "g"}, "-- 7 tables not readable by ro: a, b, c, d, e, …"},
+	} {
+		if got := unreadableNote(c.noun, "ro", c.names); got != c.want {
+			t.Errorf("unreadableNote(%q, %v) = %q, want %q", c.noun, c.names, got, c.want)
+		}
+	}
+}
+
+func TestUnreadableNoteForgery(t *testing.T) {
+	got := unreadableNote("table", "r\no", []string{"x\n-- 4 rows, 0.0 ms", "y\r\tz"})
+	if strings.ContainsAny(got, "\r\n\t") {
+		t.Errorf("note has a control character: %q", got)
+	}
+	res := objectList{Type: "table", Tables: []tableRow{{"x\n-- 4 rows, 0.0 ms", "table", nil, 0, false, "ro"}}}
+	out, err := renderObjects(res, parse(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(out, "\n"); n != 4 { // note, header, row, footer
+		t.Errorf("render has %d lines, want 4:\n%q", n, out)
+	}
+}
+
+func TestRenderObjectsUnreadable(t *testing.T) {
+	res := objectList{Type: "view", Views: []viewRow{{"v", "view", false, "ro"}}}
+	got, err := renderObjects(res, parse(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "-- 1 view not readable by ro: v\nname,kind\nv,view\n"; !strings.HasPrefix(got, want) {
+		t.Errorf("render =\n%q\nwant prefix %q", got, want)
 	}
 }

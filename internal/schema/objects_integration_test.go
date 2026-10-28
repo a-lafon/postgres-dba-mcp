@@ -105,6 +105,11 @@ func TestListObjectsErrors(t *testing.T) {
 	}
 }
 
+func TestListObjectsUnreadableNote(t *testing.T) { // seed 62_unreadable.sql
+	expect(t, callOK(t, "list_objects", `{"schema_name":"no_select"}`),
+		"-- 1 table not readable by pgdba_ro: secret_t\nname,kind,rows,size\nopen_t,table,\\N,<size>\nsecret_t,table,\\N,<size>\n-- 2 rows, <ms>\n")
+}
+
 func TestListObjectsViewsSequencesExtensions(t *testing.T) {
 	expect(t, callOK(t, "list_objects", `{"schema_name":"schema_tools","object_type":"view"}`),
 		"name,kind\nactive_customers,view\n-- 1 row, <ms>\n")

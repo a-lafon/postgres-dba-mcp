@@ -31,9 +31,15 @@ type tableRow struct {
 	Name, Kind string
 	Rows       *int64
 	Size       int64
+	Readable   bool
+	Role       string // current_user, named in the unreadable note
 }
 
-type viewRow struct{ Name, Kind string }
+type viewRow struct {
+	Name, Kind string
+	Readable   bool
+	Role       string // current_user, named in the unreadable note
+}
 
 type sequenceRow struct {
 	Name, DataType     string

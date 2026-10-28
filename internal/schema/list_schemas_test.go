@@ -2,6 +2,7 @@ package schema
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/a-lafon/postgres-dba-mcp/internal/config"
@@ -37,8 +38,8 @@ func TestToolDefinition(t *testing.T) {
 func TestRenderSchemas(t *testing.T) {
 	n := int64(3)
 	res := schemaList{Rows: []schemaRow{
-		{"public", "pg_database_owner", "user", &n},
-		{"pg_catalog", "postgres", "system", nil},
+		{"public", "pg_database_owner", "user", &n, true, "ro"},
+		{"pg_catalog", "postgres", "system", nil, true, "ro"},
 	}, More: true}
 	got, err := renderSchemas(res, parse(t, "--max-rows=2"))
 	if err != nil {
@@ -48,5 +49,16 @@ func TestRenderSchemas(t *testing.T) {
 		"-- 2 rows, truncated (more than 2), 0.0 ms\n-- Refine with WHERE, LIMIT or an aggregate to see the rest.\n"
 	if got != want {
 		t.Errorf("render =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestRenderSchemasUnreadable(t *testing.T) {
+	res := schemaList{Rows: []schemaRow{{"a", "o", "user", nil, true, "ro"}, {"b", "o", "user", nil, false, "ro"}}}
+	got, err := renderSchemas(res, parse(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "-- 1 schema not readable by ro: b\nschema_name,"; !strings.HasPrefix(got, want) {
+		t.Errorf("render =\n%q\nwant prefix %q", got, want)
 	}
 }
