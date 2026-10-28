@@ -124,6 +124,7 @@ func TestArgumentValidation(t *testing.T) {
 		{"max_cell zero", `{"sql":"SELECT 1","max_cell":0}`, "invalid arguments: max_cell must be at least 1"},
 		{"max_cell above limit", `{"sql":"SELECT 1","max_cell":20000}`, "invalid arguments: max_cell 20000 exceeds the server limit 10000"},
 		{"unknown field", `{"sql":"SELECT 1","limit":3}`, `invalid arguments: unknown field "limit"`},
+		{"parameter", `{"sql":"SELECT $1::int"}`, "execute_sql takes no parameters: inline the values in the SQL (explain_query accepts $n)"},
 	}
 	for _, mode := range []string{config.Restricted, config.Unrestricted} {
 		for _, tt := range tests {

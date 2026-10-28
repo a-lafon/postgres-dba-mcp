@@ -102,6 +102,12 @@ func (x *executor) handle(ctx context.Context, args json.RawMessage) (string, er
 	case maxCell > x.cfg.MaxCellLimit:
 		return "", fmt.Errorf("invalid arguments: max_cell %d exceeds the server limit %d", maxCell, x.cfg.MaxCellLimit)
 	}
+	// Nothing ever binds values here, so a $n reaches Postgres as a bind error naming a prepared statement
+	// the caller never wrote. Checked with the other argument bounds, before the access mode: it is the
+	// contract of the tool, and a caller who fixes it still meets the refusal the mode owes them.
+	if safesql.HasParams(in.SQL) {
+		return "", errors.New("execute_sql takes no parameters: inline the values in the SQL (explain_query accepts $n)")
+	}
 	res, err := x.execute(ctx, in.SQL, maxRows)
 	if err != nil {
 		return "", format.WithSQL(x.timeoutHint(err), in.SQL)
