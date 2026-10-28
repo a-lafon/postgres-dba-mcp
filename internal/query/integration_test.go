@@ -106,7 +106,7 @@ func TestRestrictedExecution(t *testing.T) {
 
 	t.Run("write refused", func(t *testing.T) {
 		text, isErr := c.exec(t, "DELETE FROM exec.canary")
-		want := "ERROR: restricted mode: DeleteStmt statements are not allowed (allowed: SELECT, VALUES, TABLE, WITH, EXPLAIN, SHOW)"
+		want := "ERROR: restricted mode: DeleteStmt statements are not allowed (allowed: SELECT, VALUES, TABLE, WITH, EXPLAIN, SHOW); start the server with --access-mode=unrestricted to run it"
 		if !isErr || text != want {
 			t.Errorf("got %v %q", isErr, text)
 		}
@@ -116,7 +116,7 @@ func TestRestrictedExecution(t *testing.T) {
 	})
 	t.Run("denied function", func(t *testing.T) {
 		text, isErr := c.exec(t, "SELECT * FROM pg_read_file('/etc/passwd')")
-		if !isErr || text != "ERROR: restricted mode: function pg_read_file() is not allowed" {
+		if !isErr || text != "ERROR: restricted mode: function pg_read_file() is not allowed; start the server with --access-mode=unrestricted to run it" {
 			t.Errorf("got %v %q", isErr, text)
 		}
 	})

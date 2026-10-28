@@ -154,6 +154,34 @@ func TestUnrestrictedRefusals(t *testing.T) {
 	}
 }
 
+// TestRestrictedRefusalHint checks that a refusal unrestricted mode would have run names the flag,
+// and that one it would refuse all the same does not.
+func TestRestrictedRefusalHint(t *testing.T) {
+	const hint = "; start the server with --access-mode=unrestricted to run it"
+	tests := []struct {
+		name, sql string
+		wantHint  bool
+	}{
+		{"write", "DELETE FROM t", true},
+		{"denied function", "SELECT pg_read_file('/etc/passwd')", true},
+		{"multi", "SELECT 1; DELETE FROM t", false},
+		{"syntax error", "SELEC 1", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tool := testTool(t, "--access-mode="+config.Restricted)
+			args, _ := json.Marshal(map[string]string{"sql": tt.sql})
+			_, err := tool.Handler(context.Background(), args)
+			if err == nil {
+				t.Fatalf("err = nil, want a refusal")
+			}
+			if got := strings.HasSuffix(err.Error(), hint); got != tt.wantHint {
+				t.Fatalf("err = %q, hint = %v, want %v", err, got, tt.wantHint)
+			}
+		})
+	}
+}
+
 // TestRegisterWarnHelper is the body of the subprocess started by TestRegisterLogsPolicyWarnings.
 func TestRegisterWarnHelper(t *testing.T) {
 	mode := os.Getenv("PGDBA_QUERY_WARN_MODE")

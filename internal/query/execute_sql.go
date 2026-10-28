@@ -107,12 +107,22 @@ func (x *executor) handle(ctx context.Context, args json.RawMessage) (string, er
 	return render(res, x.cfg, maxRows, maxCell)
 }
 
+// unrestrictedHint names the flag when unrestricted mode would have run sql, which is the whole
+// difference for someone whose previous server ran in that mode by default. Parsing to exactly one
+// statement is the condition, since that is all unrestricted mode asks of a statement.
+func unrestrictedHint(sql string, err error) error {
+	if count, _, cErr := safesql.Classify(sql); cErr != nil || count != 1 {
+		return err
+	}
+	return fmt.Errorf("%w; start the server with --access-mode=unrestricted to run it", err)
+}
+
 // execute validates sql for the access mode, then runs it in the matching transaction runner.
 func (x *executor) execute(ctx context.Context, sql string, maxRows int) (result, error) {
 	if x.cfg.AccessMode == config.Restricted {
 		st, err := safesql.Check(sql, x.policy)
 		if err != nil {
-			return result{}, err
+			return result{}, unrestrictedHint(sql, err)
 		}
 		run := x.run.ReadOnly
 		if st.Executes() {
