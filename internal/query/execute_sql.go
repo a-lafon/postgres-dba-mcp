@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/a-lafon/postgres-dba-mcp/internal/config"
@@ -103,9 +104,22 @@ func (x *executor) handle(ctx context.Context, args json.RawMessage) (string, er
 	}
 	res, err := x.execute(ctx, in.SQL, maxRows)
 	if err != nil {
-		return "", format.WithSQL(err, in.SQL)
+		return "", format.WithSQL(x.timeoutHint(err), in.SQL)
 	}
 	return render(res, x.cfg, maxRows, maxCell)
+}
+
+// timeoutHint adds the limit and what to do to a statement timeout, which says neither. It sets the Postgres
+// HINT line, which format.Error already renders. 57014 is also a cancel by a DBA or a standby conflict, so the
+// message must say statement timeout too. It returns a copy: the PgError belongs to the chain pgx built.
+func (x *executor) timeoutHint(err error) error {
+	var pe *pgconn.PgError
+	if errors.As(err, &pe) && pe.Code == "57014" && strings.Contains(pe.Message, "statement timeout") && pe.Hint == "" {
+		c := *pe
+		c.Hint = fmt.Sprintf("the statement timeout is %s; bound the query with a WHERE on an indexed column or a LIMIT, or look at its plan first; a cold cache can cause this, so a retry may succeed", x.cfg.StatementTimeout)
+		return &c
+	}
+	return err
 }
 
 // unrestrictedHint names the flag when unrestricted mode would have run sql, which is the whole

@@ -60,6 +60,7 @@ These flags did not exist in 0.3.0: `--tools`, `--max-rows`, `--max-rows-limit`,
 | A long value comes back whole, however long. | A cell longer than `max_cell` (200 characters by default) is cut and ends with `…[+<n> chars]`, and the footer names its column: `-- 1 cell shortened (body); pass max_cell (up to 10000) to read more`. Long text columns (descriptions, JSON documents, logs) are cut on a plain `SELECT`. | Pass `max_cell` to read a long value whole, or select `substr(col, <from>, <n>)`. |
 | A statement without a result set returns `No results`. | It returns its command tag in the footer, for example `-- INSERT 0 3, 4 ms`. A `RETURNING` result is rendered under the same row and byte bounds. | None. |
 | An empty or comment-only query is sent to the server. | `ERROR: empty query`, with no database access. A syntax error is `ERROR: syntax error: ...`. | None. |
+| A statement that exceeds the timeout fails with Postgres's bare `canceling statement due to statement timeout`. | The same error carries a `HINT:` with the limit in force and advice: bound the query with a `WHERE` on an indexed column or a `LIMIT`, or look at its plan; a retry may succeed on a cold cache. A cancel by a DBA does not get it. | None. |
 
 ## list_schemas, list_objects, get_object_details
 

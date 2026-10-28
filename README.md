@@ -295,7 +295,7 @@ Tools return plain text, never structured JSON.
 - Every table ends with a footer starting with `--`: `-- 12 rows, 38 ms`, `-- 100 rows, truncated (more than 100), 38 ms`, or `-- 57 rows, truncated (32768-byte limit), 38 ms`. Truncated results add a line suggesting to refine the query. Statements with no rows end with their command tag (`-- UPDATE 3, 3 ms`).
 - `explain_query` ends with a footer `-- plan, <duration>`, the wall time of the whole call.
 - A result never exceeds `--max-bytes`, and rows never exceed `max_rows` (default `--max-rows`).
-- Errors come back as a tool error (`isError: true`) whose text starts with `ERROR: `, followed by `(SQLSTATE <code>)`, `DETAIL:`, `HINT:` and `POSITION:` lines when Postgres provides them.
+- Errors come back as a tool error (`isError: true`) whose text starts with `ERROR: `, followed by `(SQLSTATE <code>)`, `DETAIL:`, `HINT:` and `POSITION:` lines when Postgres provides them. A statement timeout, which Postgres reports without the limit, gets a `HINT:` naming `--statement-timeout` and how to bound the query.
 
 Example:
 

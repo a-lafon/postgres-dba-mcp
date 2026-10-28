@@ -3,14 +3,18 @@ package query
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/a-lafon/postgres-dba-mcp/internal/config"
+	"github.com/a-lafon/postgres-dba-mcp/internal/format"
 	"github.com/a-lafon/postgres-dba-mcp/internal/safesql"
 	"github.com/a-lafon/postgres-dba-mcp/internal/server"
 )
@@ -179,6 +183,36 @@ func TestRestrictedRefusalHint(t *testing.T) {
 				t.Fatalf("err = %q, hint = %v, want %v", err, got, tt.wantHint)
 			}
 		})
+	}
+}
+
+func TestTimeoutHint(t *testing.T) {
+	x := &executor{cfg: testConfig(t, "--statement-timeout=5s")}
+	timeout := &pgconn.PgError{Code: "57014", Message: "canceling statement due to statement timeout"}
+	got := format.Error(x.timeoutHint(fmt.Errorf("run: %w", timeout)))
+	for _, want := range []string{"(SQLSTATE 57014)", "HINT: the statement timeout is 5s;", "bound the query", "a retry may succeed"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("error = %q, missing %q", got, want)
+		}
+	}
+	other := &pgconn.PgError{Code: "42P01", Message: "relation does not exist"}
+	if got := format.Error(x.timeoutHint(other)); strings.Contains(got, "HINT") {
+		t.Errorf("error = %q, want no hint", got)
+	}
+	cancel := &pgconn.PgError{Code: "57014", Message: "canceling statement due to user request"}
+	if got := format.Error(x.timeoutHint(cancel)); strings.Contains(got, "HINT") {
+		t.Errorf("error = %q, want no hint on a cancel", got)
+	}
+	sent := &pgconn.PgError{Code: "57014", Message: "canceling statement due to statement timeout", Hint: "from Postgres"}
+	if got := format.Error(x.timeoutHint(sent)); !strings.Contains(got, "HINT: from Postgres") || strings.Contains(got, "retry") {
+		t.Errorf("error = %q, want the hint Postgres sent", got)
+	}
+	if timeout.Hint != "" {
+		t.Error("the original PgError was mutated")
+	}
+	plain := errors.New("boom")
+	if x.timeoutHint(plain) != plain {
+		t.Error("non-Postgres error was changed")
 	}
 }
 
