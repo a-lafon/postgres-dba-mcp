@@ -140,14 +140,22 @@ func runOne(ctx context.Context, tx pgx.Tx, c check) (result, error) {
 	return res, nil
 }
 
-// failedSection reports err, reduced to its first line, as the only item of the section.
+// failedSection reports err, reduced to its first line, as the only item of the section. A check the server
+// does not implement (a managed fork such as Aurora answers 0A000 feature_not_supported) is skipped instead:
+// it is no finding of this database, and listing it with the problems makes a false alert.
 func failedSection(name string, err error) section {
-	msg := err.Error()
+	msg, code := err.Error(), ""
 	var pe *pgconn.PgError
 	if errors.As(err, &pe) {
-		msg = pe.Message
+		msg, code = pe.Message, pe.Code
 	}
 	msg, _, _ = strings.Cut(msg, "\n")
+	if code == "0A000" {
+		if msg == "" {
+			msg = code // an empty skip reason would render the section as a healthy one
+		}
+		return section{name: name, skip: msg}
+	}
 	return section{name: name, items: []item{{kind: "check failed", text: "check failed: " + msg}}}
 }
 

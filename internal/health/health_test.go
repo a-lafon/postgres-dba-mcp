@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func names(cs []check) string {
@@ -52,6 +54,14 @@ func TestParseTypes(t *testing.T) {
 func TestFailedSection(t *testing.T) {
 	s := failedSection("replication", errors.New("first line\nsecond line"))
 	if got, want := s.text(), "replication  ! check failed: first line\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if got, want := failedSection("replication", &pgconn.PgError{Code: "0A000"}).text(), "replication  skipped: 0A000\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	unsupported := &pgconn.PgError{Code: "0A000", Message: "Function pg_stat_get_wal_receiver() is currently not supported in Aurora."}
+	s = failedSection("replication", fmt.Errorf("query: %w", unsupported))
+	if got, want := s.text(), "replication  skipped: Function pg_stat_get_wal_receiver() is currently not supported in Aurora.\n"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }

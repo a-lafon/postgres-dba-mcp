@@ -18,15 +18,19 @@ const (
 // item is one problem; kind groups the items that share the per-kind cap.
 type item struct{ kind, text string }
 
-// section is the report part of one check: problem items, or OK with optional facts.
+// section is the report part of one check: problem items, OK with optional facts, or skipped.
 type section struct {
 	name  string
 	facts string
 	items []item
+	skip  string // why the check could not run here; replaces the OK and problem lines
 }
 
 // text renders the section, applying the per-kind cap.
 func (s section) text() string {
+	if s.skip != "" {
+		return fmt.Sprintf("%-*s%s\n", nameWidth, s.name, "skipped: "+s.skip)
+	}
 	pad := strings.Repeat(" ", nameWidth)
 	items := capItems(s.items)
 	if len(items) == 0 {
