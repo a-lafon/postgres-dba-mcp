@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -20,6 +22,35 @@ import (
 
 	"github.com/a-lafon/postgres-dba-mcp/internal/config"
 )
+
+// captureLog replaces the log writer for the test and returns what was written.
+func captureLog(t *testing.T) func() string {
+	t.Helper()
+	var mu sync.Mutex
+	var buf bytes.Buffer
+	logMu.Lock()
+	old := logWriter
+	logWriter = writerFunc(func(p []byte) (int, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return buf.Write(p)
+	})
+	logMu.Unlock()
+	t.Cleanup(func() {
+		logMu.Lock()
+		logWriter = old
+		logMu.Unlock()
+	})
+	return func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return buf.String()
+	}
+}
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
 func testCfg(t testing.TB, dsn string, flags ...string) *config.Config {
 	t.Helper()
@@ -162,6 +193,36 @@ func TestNewestTestedMajorMatchesCI(t *testing.T) {
 	majors := strings.Split(string(m[1]), ",")
 	if last := strings.TrimSpace(majors[len(majors)-1]); last != strconv.Itoa(newestTestedMajor) {
 		t.Errorf("ci.yml tests up to PostgreSQL %s, newestTestedMajor is %d", last, newestTestedMajor)
+	}
+}
+
+// Everything the driver did not recognise as a connection option lands in RuntimeParams, which
+// poolConfig throws away. A misspelled TLS option must not go with it in silence: the connection would
+// fall back to sslmode=prefer, which encrypts without checking the server's certificate.
+func TestPoolConfigRefusesAMisspelledTLSOption(t *testing.T) {
+	_, _, err := poolConfig(testCfg(t, "postgres://u@h/db?sslmod=verify-full"))
+	if err == nil || !strings.Contains(err.Error(), "sslmod") {
+		t.Fatalf("error %v, want one naming sslmod", err)
+	}
+	// Spelled right, it never reaches that map: the driver turns it into a TLS configuration.
+	pc, _, err := poolConfig(testCfg(t, "postgres://u@h/db?sslmode=verify-full"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pc.ConnConfig.TLSConfig == nil || pc.ConnConfig.TLSConfig.InsecureSkipVerify {
+		t.Error("sslmode=verify-full did not ask for a checked certificate")
+	}
+}
+
+// A server setting cannot travel in the connection, but dropping it without a word leaves the user
+// thinking it applied.
+func TestPoolConfigWarnsAboutADroppedSetting(t *testing.T) {
+	logged := captureLog(t)
+	if _, _, err := poolConfig(testCfg(t, "postgres://u@h/db?timezone=UTC")); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logged(), `"timezone" is ignored`) {
+		t.Errorf("the dropped setting was not reported: %q", logged())
 	}
 }
 

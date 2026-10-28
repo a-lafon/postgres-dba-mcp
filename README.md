@@ -110,6 +110,8 @@ Or put it in `.mcp.json`:
 
 The URI can also be the first argument (`postgres-dba-mcp postgres://...`). When both are given, `DATABASE_URI` wins. The server starts without connecting: the first tool call opens the connection.
 
+Connection options in the URI (`sslmode`, `sslrootcert`, `connect_timeout`, …) are honoured, and so is `search_path`, which is applied to every transaction rather than sent at connection time, because a transaction pooler refuses it there. A server setting such as `timezone` is reported as ignored for the same reason. A misspelled TLS option is refused at startup instead: left alone it would read as a server setting, and the connection would fall back to an unchecked certificate.
+
 Through Docker, `localhost` inside the container is the container itself, and the image does not rewrite it. On Docker Desktop use `host.docker.internal` in the URI; on Linux use `--network=host` or the address of the host on the bridge network.
 
 ```json

@@ -3,7 +3,6 @@
 package db
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,35 +17,6 @@ import (
 
 	"github.com/a-lafon/postgres-dba-mcp/internal/testpg"
 )
-
-// captureLog replaces the log writer for the test and returns what was written.
-func captureLog(t *testing.T) func() string {
-	t.Helper()
-	var mu sync.Mutex
-	var buf bytes.Buffer
-	logMu.Lock()
-	old := logWriter
-	logWriter = writerFunc(func(p []byte) (int, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		return buf.Write(p)
-	})
-	logMu.Unlock()
-	t.Cleanup(func() {
-		logMu.Lock()
-		logWriter = old
-		logMu.Unlock()
-	})
-	return func() string {
-		mu.Lock()
-		defer mu.Unlock()
-		return buf.String()
-	}
-}
-
-type writerFunc func([]byte) (int, error)
-
-func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
 // open builds a DB for dsn, closed at cleanup. The role audit is not awaited.
 func open(t *testing.T, dsn string, flags ...string) *DB {

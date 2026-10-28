@@ -115,6 +115,18 @@ func poolConfig(cfg *config.Config) (*pgxpool.Config, string, error) {
 	// Only application_name travels in the startup packet: PgBouncer refuses the timeouts there, and
 	// refuses a search_path before 1.21. The user's search_path is kept and set per transaction.
 	searchPath := pc.ConnConfig.RuntimeParams["search_path"]
+	// Whatever the driver did not recognise as a connection option is in that same map, so dropping it
+	// silently would hide a misspelling. A misspelled TLS option is the dangerous one: the connection
+	// would fall back to sslmode=prefer, which encrypts without checking the server's certificate.
+	for k := range pc.ConnConfig.RuntimeParams {
+		switch {
+		case k == "search_path" || k == "application_name":
+		case strings.HasPrefix(k, "ssl"):
+			return nil, "", fmt.Errorf("database URI: %q is not a connection option; the TLS options are sslmode, sslrootcert, sslcert, sslkey and sslpassword, and a misspelled one would leave the server's certificate unchecked", k)
+		default:
+			logf("database URI: %q is ignored: a server setting cannot travel in the connection, because a transaction pooler refuses it there", k)
+		}
+	}
 	pc.ConnConfig.RuntimeParams = map[string]string{"application_name": applicationName}
 	if pc.ConnConfig.ConnectTimeout == 0 {
 		pc.ConnConfig.ConnectTimeout = connectTimeout
