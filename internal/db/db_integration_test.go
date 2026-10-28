@@ -764,3 +764,42 @@ func TestSearchPathFromTheURI(t *testing.T) {
 		})
 	}
 }
+
+// A tool that misses an extension answers "run CREATE EXTENSION ...". That advice has to work without
+// restarting the server, so the cached server info expires instead of being kept for the whole process.
+func TestInfoSeesAnExtensionInstalledLater(t *testing.T) {
+	restore := infoTTL
+	t.Cleanup(func() { infoTTL = restore })
+	ctx := context.Background()
+	name := testpg.TempDB(t)
+	d := open(t, testpg.DSN(testpg.RO(t), name))
+
+	infoTTL = time.Hour
+	if _, err := d.Info(ctx); err != nil {
+		t.Fatal(err)
+	}
+	a, err := pgx.Connect(ctx, testpg.DSN(testpg.Admin(t), name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = a.Close(ctx) }()
+	if _, err := a.Exec(ctx, "CREATE EXTENSION pg_trgm"); err != nil {
+		t.Fatal(err)
+	}
+
+	cached, err := d.Info(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cached.Extensions["pg_trgm"]; ok {
+		t.Fatal("the server info is not cached at all, this test proves nothing")
+	}
+	infoTTL = time.Nanosecond
+	fresh, err := d.Info(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fresh.Extensions["pg_trgm"]; !ok {
+		t.Error("an extension installed after the first read never shows up: the advice to run CREATE EXTENSION cannot work")
+	}
+}

@@ -83,6 +83,11 @@ func AtLeast(version string, major, minor int) bool {
 	return ok && err1 == nil && err2 == nil && (maj > major || maj == major && mnr >= minor)
 }
 
+// infoTTL is how long the server info is reused before being read again. It is short because the tools
+// that miss an extension answer "run CREATE EXTENSION ...": that advice has to work without a restart.
+// A variable so that tests do not have to wait for it.
+var infoTTL = 15 * time.Second
+
 // DB is the connection pool of the process and its transaction runners.
 type DB struct {
 	pool *pgxpool.Pool
@@ -92,6 +97,7 @@ type DB struct {
 
 	mu        sync.Mutex
 	info      *Info
+	infoRead  time.Time
 	audit     auditState
 	auditDone chan struct{} // closed once the role audit has completed
 }
@@ -193,11 +199,14 @@ func (d *DB) resetHypopg(ctx context.Context, conn *pgx.Conn) bool {
 func (d *DB) hasHypopg(ctx context.Context, conn *pgx.Conn) (bool, error) {
 	d.mu.Lock()
 	info := d.info
+	fresh := time.Since(d.infoRead) < infoTTL
 	d.mu.Unlock()
-	if info != nil {
+	if info != nil && fresh {
 		_, ok := info.Extensions["hypopg"]
 		return ok, nil
 	}
+	// Stale: ask the catalog rather than keep resetting an extension that may be gone, which would fail
+	// every release and have the pool rebuild the connection on each call.
 	var ok bool
 	err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'hypopg')").Scan(&ok)
 	return ok, err
@@ -347,8 +356,9 @@ func isConnError(err error) bool {
 func (d *DB) Info(ctx context.Context) (Info, error) {
 	d.mu.Lock()
 	cached := d.info
+	fresh := time.Since(d.infoRead) < infoTTL
 	d.mu.Unlock()
-	if cached != nil {
+	if cached != nil && fresh {
 		return *cached, nil
 	}
 	info := Info{Extensions: map[string]string{}}
@@ -381,6 +391,7 @@ func (d *DB) Info(ctx context.Context) (Info, error) {
 	}
 	d.mu.Lock()
 	d.info = &info
+	d.infoRead = time.Now()
 	d.mu.Unlock()
 	return info, nil
 }
