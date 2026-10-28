@@ -736,3 +736,61 @@ func DSNWithPassword(t *testing.T, password string) string {
 	}
 	return fmt.Sprintf("postgres://pgdba_ro:%s@%s:%d/pgdba?sslmode=disable", password, pc.Host, pc.Port)
 }
+
+// TestSearchPathFromTheURI checks that a search_path the user put in the connection URI reaches the
+// statement, directly and behind PgBouncer. It travels per transaction, not in the startup packet,
+// which PgBouncer before 1.21 refuses.
+func TestSearchPathFromTheURI(t *testing.T) {
+	ctx := context.Background()
+	admin, err := pgx.Connect(ctx, testpg.Admin(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = admin.Close(ctx) })
+	drop := func() {
+		if _, err := admin.Exec(ctx, "DROP SCHEMA IF EXISTS sp_uri CASCADE"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	drop()
+	t.Cleanup(drop)
+	if _, err := admin.Exec(ctx, `CREATE SCHEMA sp_uri;
+		GRANT USAGE ON SCHEMA sp_uri TO PUBLIC;
+		CREATE TABLE sp_uri.only_here (x int);
+		INSERT INTO sp_uri.only_here VALUES (1), (2);
+		GRANT SELECT ON sp_uri.only_here TO PUBLIC`); err != nil {
+		t.Fatal(err)
+	}
+	withParam := func(dsn, kv string) string {
+		if strings.Contains(dsn, "?") {
+			return dsn + "&" + kv
+		}
+		return dsn + "?" + kv
+	}
+
+	for _, tt := range []struct{ name, dsn string }{
+		{"direct", testpg.RO(t)},
+		{"through pgbouncer", testpg.Bouncer(t)},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			d := open(t, withParam(tt.dsn, "search_path=sp_uri"))
+			var path string
+			var rows int
+			if err := d.ReadOnly(ctx, func(ctx context.Context, tx pgx.Tx) error {
+				if err := tx.QueryRow(ctx, "SELECT current_setting('search_path')").Scan(&path); err != nil {
+					return err
+				}
+				// The point of the setting: an unqualified name resolves in that schema.
+				return tx.QueryRow(ctx, "SELECT count(*) FROM only_here").Scan(&rows)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if path != "sp_uri" {
+				t.Errorf("search_path = %q, want %q", path, "sp_uri")
+			}
+			if rows != 2 {
+				t.Errorf("rows = %d, want 2", rows)
+			}
+		})
+	}
+}

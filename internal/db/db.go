@@ -41,6 +41,12 @@ const settingsSQL = `SELECT set_config('statement_timeout', $1, true),
   set_config('IntervalStyle', 'postgres', true),
   set_config('bytea_output', 'hex', true)`
 
+// searchPathSQL extends settingsSQL when the connection URI carried a search_path.
+// $2 is that value; it is set per transaction, because PgBouncer before 1.21 refuses
+// a search_path in the startup packet.
+const searchPathSQL = `,
+  set_config('search_path', $2, true)`
+
 // logWriter receives the log lines of this package; tests replace it.
 var (
 	logMu     sync.Mutex
@@ -81,6 +87,8 @@ func AtLeast(version string, major, minor int) bool {
 type DB struct {
 	pool *pgxpool.Pool
 	cfg  *config.Config
+	// searchPath is what the connection URI asked for, empty when it asked for nothing.
+	searchPath string
 
 	mu        sync.Mutex
 	info      *Info
@@ -96,14 +104,17 @@ const (
 	auditComplete
 )
 
-// poolConfig builds the pool configuration for cfg.
-func poolConfig(cfg *config.Config) (*pgxpool.Config, error) {
+// poolConfig builds the pool configuration for cfg. It returns the search_path the connection URI
+// asked for, if any, which begin applies per transaction.
+func poolConfig(cfg *config.Config) (*pgxpool.Config, string, error) {
 	pc, err := pgxpool.ParseConfig(cfg.DSN)
 	if err != nil {
-		return nil, fmt.Errorf("parse database URI: %w", err)
+		return nil, "", fmt.Errorf("parse database URI: %w", err)
 	}
 	pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
-	// Only application_name travels in the startup packet: PgBouncer refuses the timeouts there.
+	// Only application_name travels in the startup packet: PgBouncer refuses the timeouts there, and
+	// refuses a search_path before 1.21. The user's search_path is kept and set per transaction.
+	searchPath := pc.ConnConfig.RuntimeParams["search_path"]
 	pc.ConnConfig.RuntimeParams = map[string]string{"application_name": applicationName}
 	if pc.ConnConfig.ConnectTimeout == 0 {
 		pc.ConnConfig.ConnectTimeout = connectTimeout
@@ -114,16 +125,16 @@ func poolConfig(cfg *config.Config) (*pgxpool.Config, error) {
 	pc.MinIdleConns = 0
 	pc.MaxConnIdleTime = maxConnIdleTime
 	pc.PingTimeout = pingTimeout
-	return pc, nil
+	return pc, searchPath, nil
 }
 
 // New builds the pool. It opens no connection: the first one is opened by the first call.
 func New(cfg *config.Config) (*DB, error) {
-	pc, err := poolConfig(cfg)
+	pc, searchPath, err := poolConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
-	d := &DB{cfg: cfg, auditDone: make(chan struct{})}
+	d := &DB{cfg: cfg, searchPath: searchPath, auditDone: make(chan struct{})}
 	pc.AfterRelease = d.afterRelease
 	d.pool, err = pgxpool.NewWithConfig(context.Background(), pc)
 	if err != nil {
@@ -144,12 +155,26 @@ func (d *DB) afterRelease(conn *pgx.Conn) bool {
 	if err != nil {
 		return false
 	}
-	if hypopg {
-		if _, err := conn.Exec(ctx, "SELECT hypopg_reset()"); err != nil {
-			return false
-		}
+	if hypopg && !d.resetHypopg(ctx, conn) {
+		return false
 	}
 	_, err = conn.Exec(ctx, "DISCARD ALL")
+	return err == nil
+}
+
+// resetHypopg drops the hypothetical indexes of conn. It runs in its own transaction, because hypopg
+// may be reachable only through the URI's search_path, which only begin applies: a session-level setting
+// would stay behind on one server connection of a transaction pooler and reach another client.
+func (d *DB) resetHypopg(ctx context.Context, conn *pgx.Conn) bool {
+	err := pgx.BeginFunc(ctx, conn, func(t pgx.Tx) error {
+		if d.searchPath != "" {
+			if _, err := t.Exec(ctx, "SELECT set_config('search_path', $1, true)", d.searchPath); err != nil {
+				return err
+			}
+		}
+		_, err := t.Exec(ctx, "SELECT hypopg_reset()")
+		return err
+	})
 	return err == nil
 }
 
@@ -238,7 +263,11 @@ func (d *DB) begin(ctx context.Context, c *pgxpool.Conn, readOnly bool) (tx, err
 	}
 	t := tx{pt}
 	ms := max(1, int64(math.Ceil(float64(d.cfg.StatementTimeout)/float64(time.Millisecond))))
-	if _, err := t.Exec(ctx, settingsSQL, strconv.FormatInt(ms, 10)); err != nil {
+	sql, args := settingsSQL, []any{strconv.FormatInt(ms, 10)}
+	if d.searchPath != "" {
+		sql, args = sql+searchPathSQL, append(args, d.searchPath)
+	}
+	if _, err := t.Exec(ctx, sql, args...); err != nil {
 		_ = pt.Rollback(context.WithoutCancel(ctx))
 		return tx{}, err
 	}

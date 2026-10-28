@@ -43,7 +43,7 @@ func TestPoolConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pc, err := poolConfig(testCfg(t, tt.dsn))
+			pc, _, err := poolConfig(testCfg(t, tt.dsn))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -162,5 +162,31 @@ func TestNewestTestedMajorMatchesCI(t *testing.T) {
 	majors := strings.Split(string(m[1]), ",")
 	if last := strings.TrimSpace(majors[len(majors)-1]); last != strconv.Itoa(newestTestedMajor) {
 		t.Errorf("ci.yml tests up to PostgreSQL %s, newestTestedMajor is %d", last, newestTestedMajor)
+	}
+}
+
+// A search_path in the URI is the user's, not a startup parameter to drop: it leaves RuntimeParams,
+// which PgBouncer before 1.21 refuses, and comes back as the value begin sets per transaction.
+func TestPoolConfigKeepsTheSearchPath(t *testing.T) {
+	tests := []struct {
+		name, dsn, want string
+	}{
+		{"none", "postgres://u@h/db", ""},
+		{"from the URI", "postgres://u@h/db?search_path=audit,public", "audit,public"},
+		{"with other parameters", "postgres://u@h/db?search_path=app&statement_timeout=1", "app"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc, got, err := poolConfig(testCfg(t, tt.dsn))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Errorf("search path = %q, want %q", got, tt.want)
+			}
+			if _, ok := pc.ConnConfig.RuntimeParams["search_path"]; ok {
+				t.Error("search_path stayed in the startup packet")
+			}
+		})
 	}
 }
