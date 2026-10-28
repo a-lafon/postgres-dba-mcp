@@ -367,6 +367,47 @@ func TestUnrestrictedExecution(t *testing.T) {
 	})
 }
 
+// In unrestricted mode the transaction commits, so a SELECT whose rows have side effects must run to its end
+// even when its output is truncated: the model sees fewer rows, the database must see the whole statement.
+func TestUnrestrictedSelectRunsToCompletion(t *testing.T) {
+	admin := adminConn(t)
+	drop := func() {
+		if _, err := admin.Exec(context.Background(),
+			"DROP FUNCTION IF EXISTS app_rw.bump(int); DROP TABLE IF EXISTS app_rw.t4"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	drop()
+	t.Cleanup(drop)
+	if _, err := admin.Exec(context.Background(), `CREATE TABLE app_rw.t4 (x int);
+		GRANT ALL ON app_rw.t4 TO pgdba_rw;
+		CREATE FUNCTION app_rw.bump(v int) RETURNS int LANGUAGE sql
+		  AS 'INSERT INTO app_rw.t4 VALUES (v) RETURNING v'`); err != nil {
+		t.Fatal(err)
+	}
+	const sql = "SELECT app_rw.bump(x) FROM generate_series(1, 500) x"
+	count := func() string { return scalar(t, admin, "SELECT count(*)::text FROM app_rw.t4") }
+	c := newClient(t, testpg.RW(t), "--access-mode=unrestricted")
+
+	t.Run("unrestricted", func(t *testing.T) {
+		text := c.ok(t, sql, 10)
+		if !strings.Contains(text, "-- 10 of ~500 rows (planner estimate), truncated, ") {
+			t.Errorf("got %q", text)
+		}
+		if n := count(); n != "500" {
+			t.Errorf("rows written = %s, want 500: the statement was committed half done", n)
+		}
+	})
+	t.Run("restricted writes nothing", func(t *testing.T) {
+		if text, isErr := newClient(t, testpg.RO(t)).exec(t, sql, 10); !isErr {
+			t.Errorf("got %q, want an error", text)
+		}
+		if n := count(); n != "500" {
+			t.Errorf("rows = %s, want 500: the restricted call touched the table", n)
+		}
+	})
+}
+
 // In unrestricted mode a statement read without a cursor (DML with RETURNING, EXPLAIN) is drained to its end:
 // the Go heap must stay bounded by max_rows, and statement_timeout must bound the time.
 func TestUnrestrictedWithoutCursorIsBounded(t *testing.T) {

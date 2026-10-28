@@ -16,6 +16,17 @@ type call struct {
 	loc                float64
 }
 
+// HasFuncCall reports whether sql calls at least one function, that is
+// whether running only part of it could leave anything behind. A statement
+// the parser cannot read takes the cautious side.
+func HasFuncCall(sql string) bool {
+	stmts, err := parseStatements(sql)
+	if err != nil {
+		return true
+	}
+	return len(funcCalls(stmts)) > 0
+}
+
 // funcCalls returns every FuncCall anywhere under n, in source order. The
 // walk is generic on purpose: no clause can be forgotten.
 func funcCalls(n any) []call {

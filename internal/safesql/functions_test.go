@@ -65,3 +65,27 @@ func TestFuncCallsOrderAndNames(t *testing.T) {
 		}
 	}
 }
+
+func TestHasFuncCall(t *testing.T) {
+	tests := []struct {
+		sql  string
+		want bool
+	}{
+		{"SELECT a + b FROM t WHERE a > 1 ORDER BY b LIMIT 10", false},
+		{"SELECT a::text FROM t", false}, // a cast is not a FuncCall
+		{"SELECT * FROM t", false},
+		{"", false},
+		{"SELECT f(x) FROM t", true},
+		{"SELECT count(*) FROM t", true},
+		{"SELECT * FROM generate_series(1, 5)", true},
+		{"SELECT (SELECT now())", true},
+		{"SELECT f(", true}, // unreadable: the cautious side
+	}
+	for _, tt := range tests {
+		t.Run(tt.sql, func(t *testing.T) {
+			if got := HasFuncCall(tt.sql); got != tt.want {
+				t.Errorf("HasFuncCall(%q) = %v, want %v", tt.sql, got, tt.want)
+			}
+		})
+	}
+}

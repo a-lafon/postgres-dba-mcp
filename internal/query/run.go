@@ -49,14 +49,15 @@ func withVolatilityGate(run txRunner, refs []safesql.FuncRef) txRunner {
 	}
 }
 
-// runStatement runs sql in a transaction started by run, through a cursor when cursor is set.
-func runStatement(ctx context.Context, run txRunner, sql string, cursor bool, maxRows int) (result, error) {
+// runStatement runs sql in a transaction started by run, through a cursor when cursor is set, drained to its
+// end when drain is set.
+func runStatement(ctx context.Context, run txRunner, sql string, cursor, drain bool, maxRows int) (result, error) {
 	var res result
 	err := run(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		start := time.Now()
 		var err error
 		if cursor {
-			res, err = fetchCursor(ctx, tx, sql, maxRows)
+			res, err = fetchCursor(ctx, tx, sql, drain, maxRows)
 		} else {
 			res, err = collect(ctx, tx, sql, maxRows)
 		}
@@ -70,11 +71,16 @@ func runStatement(ctx context.Context, run txRunner, sql string, cursor bool, ma
 }
 
 // fetchCursor declares a cursor on sql and fetches maxRows+1 rows, so the server computes no more than that.
-func fetchCursor(ctx context.Context, tx pgx.Tx, sql string, maxRows int) (result, error) {
+// When drain is set the rest of the cursor is run and discarded, so that a statement whose rows have side
+// effects is not committed half done.
+func fetchCursor(ctx context.Context, tx pgx.Tx, sql string, drain bool, maxRows int) (result, error) {
 	if _, err := tx.Exec(ctx, declarePrefix+sql); err != nil {
 		return result{}, shiftPosition(err)
 	}
 	res, err := collect(ctx, tx, fmt.Sprintf("FETCH FORWARD %d FROM %s", maxRows+1, cursorName), maxRows)
+	if err == nil && drain {
+		_, err = tx.Exec(ctx, "MOVE FORWARD ALL IN "+cursorName)
+	}
 	if err == nil && len(res.Columns) == 0 {
 		res.Tag = fmt.Sprintf("SELECT %d", len(res.Rows))
 	}
