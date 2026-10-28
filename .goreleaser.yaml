@@ -73,6 +73,9 @@ dockers_v2:
       org.opencontainers.image.source: "https://github.com/a-lafon/postgres-dba-mcp"
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.licenses: "MIT"
+      # The MCP Registry verifies ownership of an OCI package through this annotation: it must match
+      # the name in server.json, or `mcp-publisher publish` refuses the image.
+      io.modelcontextprotocol.server.name: "io.github.a-lafon/postgres-dba-mcp"
     sbom: false
 
 # The Homebrew cask, pushed to the tap by a release (a snapshot writes it under dist/ and pushes nothing). The

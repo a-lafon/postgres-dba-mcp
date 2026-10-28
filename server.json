@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.a-lafon/postgres-dba-mcp",
+  "title": "Postgres DBA MCP",
+  "description": "Bounded, read-only PostgreSQL access for AI assistants: nine DBA tools, compact CSV output",
+  "repository": {
+    "url": "https://github.com/a-lafon/postgres-dba-mcp",
+    "source": "github"
+  },
+  "version": "0.3.2",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/a-lafon/postgres-dba-mcp:0.3.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "DATABASE_URI",
+          "description": "PostgreSQL connection URI of the database to serve",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
