@@ -219,21 +219,10 @@ func TestRestrictedExecution(t *testing.T) {
 			t.Errorf("got %q\nwant %q", got, want)
 		}
 	})
-	t.Run("estimate follows the row limit", func(t *testing.T) {
+	t.Run("truncation follows the row limit", func(t *testing.T) {
 		text := c.ok(t, "SELECT generate_series(1, 5000)", 5)
-		if !strings.Contains(text, "-- 5 of ~5.0k rows (planner estimate), truncated, ") {
+		if !strings.Contains(text, "-- 5 rows, truncated (more than 5), ") {
 			t.Errorf("got %q", text)
-		}
-	})
-	t.Run("no estimate when complete", func(t *testing.T) {
-		if text := c.ok(t, "SELECT * FROM exec.docs", 20); strings.Contains(text, "estimate") {
-			t.Errorf("got %q", text)
-		}
-	})
-	t.Run("session stays usable after the estimate", func(t *testing.T) {
-		c.ok(t, "SELECT generate_series(1, 5000)", 5)
-		if got := withoutDuration(c.ok(t, "SELECT 1 AS x")); got != "x\n1\n-- 1 row, <d>\n" {
-			t.Errorf("got %q", got)
 		}
 	})
 }
@@ -268,7 +257,7 @@ func TestBoundedRead(t *testing.T) {
 	runtime.ReadMemStats(&after)
 
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
-	if len(lines) != 1+100+2 || !strings.HasPrefix(lines[101], "-- 100 of ~200k rows (planner estimate), truncated, ") {
+	if len(lines) != 1+100+2 || !strings.HasPrefix(lines[101], "-- 100 rows, truncated (more than 100), ") {
 		t.Fatalf("lines = %d, footer %q", len(lines), lines[len(lines)-2])
 	}
 	if elapsed > 2*time.Second {
@@ -293,9 +282,9 @@ func TestUnrestrictedExecution(t *testing.T) {
 	}
 	c := newClient(t, testpg.RW(t), "--access-mode=unrestricted")
 
-	t.Run("estimate with a committing transaction", func(t *testing.T) {
+	t.Run("truncation with a committing transaction", func(t *testing.T) {
 		text := c.ok(t, "SELECT generate_series(1, 5000)", 5)
-		if !strings.Contains(text, "-- 5 of ~5.0k rows (planner estimate), truncated, ") {
+		if !strings.Contains(text, "-- 5 rows, truncated (more than 5), ") {
 			t.Errorf("got %q", text)
 		}
 	})
@@ -391,7 +380,7 @@ func TestUnrestrictedSelectRunsToCompletion(t *testing.T) {
 
 	t.Run("unrestricted", func(t *testing.T) {
 		text := c.ok(t, sql, 10)
-		if !strings.Contains(text, "-- 10 of ~500 rows (planner estimate), truncated, ") {
+		if !strings.Contains(text, "-- 10 rows, truncated (more than 10), ") {
 			t.Errorf("got %q", text)
 		}
 		if n := count(); n != "500" {

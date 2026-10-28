@@ -20,9 +20,6 @@ type Table struct {
 	Prefix  string // lines written before the table, counted in the byte budget
 	// Caps holds, per column, a cell limit that replaces the maxCell given to Render; 0 or a missing entry keeps maxCell.
 	Caps []int
-	// Estimate is the planner's estimate of the total number of rows when the result is truncated, 0 when unknown.
-	// It is shown only when it exceeds the rows rendered.
-	Estimate int64
 	// CellLimit is the highest max_cell a caller may ask for; when above the maxCell given to Render, a shortened
 	// cell adds a footer line naming the columns and saying how to read more. 0 for tools without max_cell.
 	CellLimit int
@@ -89,12 +86,8 @@ func (t Table) cap(j, maxCell int) int {
 }
 
 // footer builds the footer lines. trunc is "" when the result is complete.
-// est is the estimated total row count, 0 when unknown; it is shown only with a truncation.
-func footer(rows int, est int64, trunc string, shortened int, hit []string, cellLimit int, d time.Duration) string {
+func footer(rows int, trunc string, shortened int, hit []string, cellLimit int, d time.Duration) string {
 	parts := []string{plural(rows, "row")}
-	if trunc != "" && est > int64(rows) {
-		parts[0] = fmt.Sprintf("%d of ~%s rows (planner estimate)", rows, Approx(est))
-	}
 	if trunc != "" {
 		parts = append(parts, trunc)
 	}
@@ -143,19 +136,15 @@ func Render(t Table, maxBytes, maxCell int, d time.Duration) (string, error) {
 	}
 	byBytes := fmt.Sprintf("truncated (%d-byte limit)", maxBytes)
 	moreThan := fmt.Sprintf("truncated (more than %d)", limit)
-	est := t.Estimate
-	if est > int64(len(rows)) {
-		moreThan = "truncated" // "N of ~M rows" already says how many are shown
-	}
 
 	// The header must leave room for the longest footer it can need: an empty result, or none of the rows fitting.
 	cellLimit := t.CellLimit
 	if maxCell >= cellLimit {
 		cellLimit = 0
 	}
-	needed := footer(0, 0, "", 0, nil, 0, d)
+	needed := footer(0, "", 0, nil, 0, d)
 	if len(rows) > 0 || more {
-		needed = footer(0, est, byBytes, 0, nil, 0, d)
+		needed = footer(0, byBytes, 0, nil, 0, d)
 	}
 	if len(prefix)+len(header)+len(needed) > maxBytes {
 		return "", fmt.Errorf("result header alone exceeds --max-bytes (%d bytes); select fewer columns", len(prefix)+len(header))
@@ -191,11 +180,11 @@ func Render(t Table, maxBytes, maxCell int, d time.Duration) (string, error) {
 		var f string
 		switch {
 		case !last:
-			f = footer(i+1, est, byBytes, shortened+cellsShortened, rowHit, cellLimit, d)
+			f = footer(i+1, byBytes, shortened+cellsShortened, rowHit, cellLimit, d)
 		case more:
-			f = footer(i+1, est, moreThan, shortened+cellsShortened, rowHit, cellLimit, d)
+			f = footer(i+1, moreThan, shortened+cellsShortened, rowHit, cellLimit, d)
 		default:
-			f = footer(i+1, 0, "", shortened+cellsShortened, rowHit, cellLimit, d)
+			f = footer(i+1, "", shortened+cellsShortened, rowHit, cellLimit, d)
 		}
 		if b.Len()+line.Len()+len(f) > maxBytes {
 			break
@@ -208,11 +197,11 @@ func Render(t Table, maxBytes, maxCell int, d time.Duration) (string, error) {
 
 	switch {
 	case written < len(rows):
-		b.WriteString(footer(written, est, byBytes, shortened, hit, cellLimit, d))
+		b.WriteString(footer(written, byBytes, shortened, hit, cellLimit, d))
 	case more:
-		b.WriteString(footer(written, est, moreThan, shortened, hit, cellLimit, d))
+		b.WriteString(footer(written, moreThan, shortened, hit, cellLimit, d))
 	default:
-		b.WriteString(footer(written, 0, "", shortened, hit, cellLimit, d))
+		b.WriteString(footer(written, "", shortened, hit, cellLimit, d))
 	}
 	return b.String(), nil
 }

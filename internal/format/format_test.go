@@ -90,18 +90,6 @@ func TestRender(t *testing.T) {
 			want: "v\n" + strings.Repeat("x", 219) + "\n" + strings.Repeat("x", 200) + "…[+21 chars]\n-- 2 rows, 1 cell shortened, 38 ms\n",
 		},
 		{
-			name:     "row limit with estimate",
-			table:    Table{Columns: []string{"v"}, Limit: 2, More: true, Estimate: 16044, Rows: [][]Cell{cells(1), cells(2)}},
-			maxBytes: 32768, maxCell: 200,
-			want: "v\n1\n2\n-- 2 of ~16k rows (planner estimate), truncated, 38 ms\n-- Refine with WHERE, LIMIT or an aggregate to see the rest.\n",
-		},
-		{
-			name:     "estimate not above the rows shown is ignored",
-			table:    Table{Columns: []string{"v"}, Limit: 2, More: true, Estimate: 2, Rows: [][]Cell{cells(1), cells(2)}},
-			maxBytes: 32768, maxCell: 200,
-			want: "v\n1\n2\n-- 2 rows, truncated (more than 2), 38 ms\n-- Refine with WHERE, LIMIT or an aggregate to see the rest.\n",
-		},
-		{
 			name:     "long cell shortened by code points",
 			table:    Table{Columns: []string{"v"}, Limit: 100, Rows: [][]Cell{cells(long)}},
 			maxBytes: 32768, maxCell: 200,

@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -25,11 +24,9 @@ const (
 type result struct {
 	Columns []string
 	Rows    [][]format.Cell
-	More    bool // the server had at least one row beyond the limit
-	// Estimate is the planner's row estimate of the whole statement, set only when More and the estimate is known.
-	Estimate int64
-	Tag      string // command tag, for statements without columns
-	Elapsed  time.Duration
+	More    bool   // the server had at least one row beyond the limit
+	Tag     string // command tag, for statements without columns
+	Elapsed time.Duration
 }
 
 // txRunner is db.DB.ReadOnly or db.DB.ReadWrite.
@@ -62,9 +59,6 @@ func runStatement(ctx context.Context, run txRunner, sql string, cursor, drain b
 			res, err = collect(ctx, tx, sql, maxRows)
 		}
 		res.Elapsed = time.Since(start)
-		if err == nil && cursor && res.More {
-			res.Estimate = estimateRows(ctx, tx, sql)
-		}
 		return err
 	})
 	return res, err
@@ -141,29 +135,4 @@ func shiftPosition(err error) error {
 		return &c
 	}
 	return err
-}
-
-// estimateRows asks the planner how many rows sql returns, with EXPLAIN (FORMAT JSON) in a savepoint so that a
-// failure leaves the transaction usable. It returns 0 when no estimate is available. The statement timeout of the
-// transaction bounds it.
-func estimateRows(ctx context.Context, tx pgx.Tx, sql string) int64 {
-	sp, err := tx.Begin(ctx)
-	if err != nil {
-		return 0
-	}
-	var plan string
-	err = sp.QueryRow(ctx, "EXPLAIN (FORMAT JSON) "+sql).Scan(&plan)
-	var p []struct {
-		Plan struct {
-			Rows float64 `json:"Plan Rows"`
-		}
-	}
-	if err != nil || json.Unmarshal([]byte(plan), &p) != nil || len(p) == 0 {
-		_ = sp.Rollback(context.WithoutCancel(ctx))
-		return 0
-	}
-	if err := sp.Rollback(context.WithoutCancel(ctx)); err != nil {
-		return 0
-	}
-	return int64(p[0].Plan.Rows)
 }
