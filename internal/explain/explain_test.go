@@ -212,7 +212,7 @@ func TestValidate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := validate(cfg(tt.mode), policy, func() (db.Info, error) { return tt.info, nil }, tt.in)
+			_, _, err := validate(cfg(tt.mode), policy, func() (db.Info, error) { return tt.info, nil }, tt.in)
 			switch {
 			case tt.want == "" && err != nil:
 				t.Fatalf("err = %v", err)
@@ -238,8 +238,40 @@ func TestValidateSkipsInfoWithoutHypotheticalIndexes(t *testing.T) {
 		Columns []string `json:"columns"`
 		Using   string   `json:"using"`
 	}{{Table: "t", Columns: []string{"a"}}}}} {
-		if _, err := validate(&config.Config{AccessMode: config.Unrestricted}, policy, info, in); err == nil {
+		if _, _, err := validate(&config.Config{AccessMode: config.Unrestricted}, policy, info, in); err == nil {
 			t.Errorf("%+v accepted", in)
 		}
+	}
+}
+
+// Only analyze runs the query, so only analyze hands its function calls to the
+// volatility gate: a plain EXPLAIN plans, and the planner never folds a
+// volatile function.
+func TestValidateGatesOnlyAnalyze(t *testing.T) {
+	policy, err := safesql.NewPolicy(nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := func() (db.Info, error) { return db.Info{VersionNum: 160004}, nil }
+	const sql = "SELECT my_schema.score(x) FROM t"
+	tests := []struct {
+		name, mode string
+		analyze    bool
+		want       int
+	}{
+		{"plain explain", config.Restricted, false, 0},
+		{"analyze", config.Restricted, true, 1},
+		{"unrestricted analyze", config.Unrestricted, true, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, refs, err := validate(&config.Config{AccessMode: tt.mode}, policy, info, args{SQL: sql, Analyze: tt.analyze})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(refs) != tt.want {
+				t.Fatalf("refs = %v, want %d", refs, tt.want)
+			}
+		})
 	}
 }

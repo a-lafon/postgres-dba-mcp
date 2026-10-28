@@ -28,6 +28,17 @@ type Statement struct {
 	Kind Kind
 	// Analyze is true when Kind is Explain and the ANALYZE option is on.
 	Analyze bool
+	// Unresolved holds, in source order and without repeats, the function
+	// calls that no name rule decided. Gate settles them against the catalog
+	// before a statement that executes them runs.
+	Unresolved []FuncRef
+}
+
+// Executes reports whether running the statement evaluates its function
+// calls. A plain EXPLAIN only plans, and the planner never folds a volatile
+// function, so it evaluates none.
+func (s Statement) Executes() bool {
+	return s.Kind == Select || (s.Kind == Explain && s.Analyze)
 }
 
 const (
@@ -80,9 +91,17 @@ func Check(sql string, p *Policy) (Statement, error) {
 	default:
 		return Statement{}, fmt.Errorf(errNotAllowed, name)
 	}
+	seen := map[string]bool{}
 	for _, c := range funcCalls(stmts[0]) {
-		if p.refuses(c) {
+		switch p.decide(c) {
+		case denied:
 			return Statement{}, fmt.Errorf("restricted mode: function %s() is not allowed", c.full)
+		case undecided:
+			key := c.rawSchema + "." + c.rawName
+			if !seen[key] {
+				seen[key] = true
+				st.Unresolved = append(st.Unresolved, FuncRef{Schema: c.rawSchema, Name: c.rawName, Full: c.full})
+			}
 		}
 	}
 	return st, nil

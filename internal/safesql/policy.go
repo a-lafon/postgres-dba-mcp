@@ -106,25 +106,39 @@ func (pt pattern) matches(c call, deny bool) bool {
 	return match(pt.schema, c.schema)
 }
 
-// refuses reports whether the policy refuses the call.
-func (p *Policy) refuses(c call) bool {
+// verdict is what the name rules say about a call.
+type verdict int
+
+const (
+	// undecided means no rule named the call: the volatility gate decides.
+	undecided verdict = iota
+	denied
+	allowed
+)
+
+// decide applies the name rules in order: user deny, user allow, built-in
+// denylist. A call no rule names is undecided.
+func (p *Policy) decide(c call) verdict {
 	for _, pt := range p.deny {
 		if pt.matches(c, true) {
-			return true
+			return denied
 		}
 	}
 	for _, pt := range p.allow {
 		if pt.matches(c, false) {
-			return false
+			return allowed
 		}
 	}
 	for _, pt := range p.builtin {
 		if match(pt.name, c.name) {
-			return true
+			return denied
 		}
 	}
-	return false
+	return undecided
 }
+
+// refuses reports whether the policy refuses the call on its name alone.
+func (p *Policy) refuses(c call) bool { return p.decide(c) == denied }
 
 func (p *Policy) computeWarnings() []string {
 	var out []string

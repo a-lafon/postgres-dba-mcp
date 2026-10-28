@@ -116,65 +116,74 @@ func Register(r *server.Registry) {
 	})
 }
 
-// validate applies the checks of the spec in order and returns the hypothetical indexes.
+// validate applies the checks of the spec in order and returns the hypothetical indexes, plus the function
+// calls the volatility gate still has to settle (empty unless the plan is going to run the query).
 // info is called only when a check needs the server (hypothetical indexes), so a bad argument costs no round trip.
-func validate(cfg *config.Config, policy *safesql.Policy, info func() (db.Info, error), in args) ([]hypo.Index, error) {
+func validate(cfg *config.Config, policy *safesql.Policy, info func() (db.Info, error), in args) ([]hypo.Index, []safesql.FuncRef, error) {
 	var idxs []hypo.Index
 	if in.Analyze && len(in.Hypo) > 0 {
-		return nil, errors.New("analyze cannot be combined with hypothetical indexes")
+		return nil, nil, errors.New("analyze cannot be combined with hypothetical indexes")
 	}
 	for _, h := range in.Hypo {
 		idx := hypo.Index{Table: h.Table, Columns: h.Columns, Using: h.Using}
 		if err := hypo.Validate(idx); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		idxs = append(idxs, idx)
 	}
 	if len(idxs) > 0 {
 		inf, err := info()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !hypo.Available(inf) {
-			return nil, fmt.Errorf("hypothetical indexes need the hypopg extension: run CREATE EXTENSION hypopg (the server needs the postgresql-%d-hypopg package)", inf.VersionNum/10000)
+			return nil, nil, fmt.Errorf("hypothetical indexes need the hypopg extension: run CREATE EXTENSION hypopg (the server needs the postgresql-%d-hypopg package)", inf.VersionNum/10000)
 		}
 	}
 	count, kind, err := safesql.Classify(in.SQL)
 	switch {
 	case err != nil:
-		return nil, err // already starts with "syntax error:"
+		return nil, nil, err // already starts with "syntax error:"
 	case count != 1:
-		return nil, errors.New("explain_query takes exactly one statement")
+		return nil, nil, errors.New("explain_query takes exactly one statement")
 	case kind == safesql.Explain:
-		return nil, errors.New("pass the query without EXPLAIN; use the analyze and verbose parameters instead")
+		return nil, nil, errors.New("pass the query without EXPLAIN; use the analyze and verbose parameters instead")
 	case in.Analyze && kind != safesql.Select:
-		return nil, errors.New("analyze is only allowed on SELECT, VALUES, TABLE or WITH … SELECT queries")
+		return nil, nil, errors.New("analyze is only allowed on SELECT, VALUES, TABLE or WITH … SELECT queries")
 	}
+	var refs []safesql.FuncRef
 	if cfg.AccessMode == config.Restricted {
 		st, err := safesql.Check(in.SQL, policy)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if st.Kind != safesql.Select {
-			return nil, errors.New("restricted mode: only SELECT, VALUES, TABLE or WITH … SELECT queries can be explained")
+			return nil, nil, errors.New("restricted mode: only SELECT, VALUES, TABLE or WITH … SELECT queries can be explained")
+		}
+		// Only analyze runs the query; a plain EXPLAIN plans it, and the planner never folds a volatile function.
+		if in.Analyze {
+			refs = st.Unresolved
 		}
 	}
 	if in.Analyze && safesql.HasParams(in.SQL) {
-		return nil, errors.New("analyze is not possible with $n parameters; replace them with values")
+		return nil, nil, errors.New("analyze is not possible with $n parameters; replace them with values")
 	}
-	return idxs, nil
+	return idxs, refs, nil
 }
 
 func explain(ctx context.Context, cfg *config.Config, policy *safesql.Policy, d *db.DB, in args) (string, error) {
 	// A query copied from get_top_queries has `interval $1`: fix it before every check and the EXPLAIN.
 	in.SQL = safesql.RewriteTypedParams(in.SQL)
-	idxs, err := validate(cfg, policy, func() (db.Info, error) { return d.Info(ctx) }, in)
+	idxs, refs, err := validate(cfg, policy, func() (db.Info, error) { return d.Info(ctx) }, in)
 	if err != nil {
 		return "", err
 	}
 	start := time.Now()
 	var out string
 	err = d.ReadOnly(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := safesql.Gate(ctx, tx, refs); err != nil {
+			return err
+		}
 		var err error
 		out, err = explainTx(ctx, tx, cfg.MaxBytes, in, idxs)
 		return err

@@ -1,6 +1,7 @@
 package safesql
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -69,7 +70,10 @@ func TestCheck(t *testing.T) {
 		{"public lo_import", "SELECT public.lo_import('/etc/passwd')", Statement{}, "restricted mode: function public.lo_import() is not allowed"},
 		{"quoted upper", `SELECT "LO_IMPORT"('x')`, Statement{}, "restricted mode: function LO_IMPORT() is not allowed"},
 		{"first denied in source order", "SELECT pg_notify('a', 'b'), lo_get(1)", Statement{}, "restricted mode: function pg_notify() is not allowed"},
-		{"ordinary functions", "SELECT now(), count(*), ST_Distance(a, b), my_schema.score(x) FROM t GROUP BY 1", Statement{Kind: Select}, ""},
+		{"ordinary functions", "SELECT now(), count(*), ST_Distance(a, b), my_schema.score(x) FROM t GROUP BY 1", Statement{Kind: Select, Unresolved: []FuncRef{
+			{Name: "now", Full: "now"}, {Name: "count", Full: "count"},
+			{Name: "st_distance", Full: "st_distance"}, {Schema: "my_schema", Name: "score", Full: "my_schema.score"},
+		}}, ""},
 		{"http_get", "SELECT http_get('http://x')", Statement{}, "restricted mode: function http_get() is not allowed"},
 		{"net.http_post", "SELECT net.http_post('http://x')", Statement{}, "restricted mode: function net.http_post() is not allowed"},
 		{"pg_file_write", "SELECT pg_file_write('f', 'x', false)", Statement{}, "restricted mode: function pg_file_write() is not allowed"},
@@ -83,7 +87,7 @@ func TestCheck(t *testing.T) {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
-				if got != tt.want {
+				if !reflect.DeepEqual(got, tt.want) {
 					t.Fatalf("got %+v, want %+v", got, tt.want)
 				}
 				return

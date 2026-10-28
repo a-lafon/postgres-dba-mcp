@@ -114,7 +114,11 @@ func (x *executor) execute(ctx context.Context, sql string, maxRows int) (result
 		if err != nil {
 			return result{}, err
 		}
-		return runStatement(ctx, x.run.ReadOnly, sql, st.Kind == safesql.Select, maxRows)
+		run := x.run.ReadOnly
+		if st.Executes() {
+			run = withVolatilityGate(run, st.Unresolved)
+		}
+		return runStatement(ctx, run, sql, st.Kind == safesql.Select, maxRows)
 	}
 	count, kind, err := safesql.Classify(sql)
 	switch {

@@ -45,6 +45,10 @@ Rules that apply everywhere: wrap errors with context and test them with `errors
 
 Add it to the CI matrix and raise `newestTestedMajor` in `internal/db/audit.go` (a unit test compares the two). `TestCatalogVolatileClassified` (`internal/safesql`) then names every volatile function of `pg_catalog` that is neither denied nor reviewed. Run each one in a `BEGIN READ ONLY` transaction as a superuser, then either add it to `builtinDeny` in `internal/safesql/denylist.go` with a case in `testdata/safesql/attacks.sql`, or add it to `testdata/safesql/catalog_volatile.txt` with the reason it is safe.
 
+## Clearing an extension function
+
+A `VOLATILE` function an extension owns is refused in restricted mode until it is listed in `reviewedVolatile` (`internal/safesql/reviewed.go`). Before adding one, install the extension on a throwaway server, call the function inside `BEGIN TRANSACTION READ ONLY; … ROLLBACK;`, and then check that nothing survived: no committed row, no file on the server, no effect on another session or backend, no background worker, no reset statistics. Run `DISCARD ALL` and `SELECT hypopg_reset()` too, the two statements the pool issues when a connection goes back, and confirm the state they are supposed to clear is really gone — `hypopg_hide_index` is listed as an example of a function that survives both. A function that only computes or only reads is cleared; anything else stays out.
+
 ## Package map
 
 One line per package under `cmd/` and `internal/`. `cmd/postgres-dba-mcp/docs_test.go` checks that every directory holding Go files appears here.
@@ -54,14 +58,14 @@ One line per package under `cmd/` and `internal/`. `cmd/postgres-dba-mcp/docs_te
 | `cmd/postgres-dba-mcp` | The binary: `main`, version, the transport choice, and `tools.go`, the list of tool packages to register. |
 | `internal/config` | The command line and environment turned into a validated `Config`. |
 | `internal/db` | The only holder of a database connection: a lazy bounded pool, the read-only and read-write transaction runners, session settings, connection cleanup and the role audit. |
-| `internal/explain` | The `explain_query` tool: plan summary, verbose plan, hypothetical indexes, always in a rolled-back read-only transaction. |
+| `internal/explain` | The `explain_query` tool: plan summary, verbose plan, hypothetical indexes, always in a rolled-back read-only transaction; `analyze` goes through the volatility gate. |
 | `internal/format` | Compact bounded text output: CSV tables with a footer, unit helpers (size, count, duration, percent) and error text. |
 | `internal/health` | The `analyze_db_health` tool: seven independent checks plus dead rows, reported as problems only. |
 | `internal/httpx` | The HTTP transports (streamable HTTP and SSE) behind the Host and Origin guard. |
 | `internal/hypo` | Hypothetical indexes through hypopg, EXPLAIN with generic plans, plan parsing and index size estimates, shared by `explain` and `indexadv`. |
 | `internal/indexadv` | The `analyze_query_indexes` and `analyze_workload_indexes` tools: workload intake, candidate indexes, greedy search on hypothetical-index costs, rendering. |
-| `internal/query` | The `execute_sql` tool: one statement per call, checked in restricted mode, read through a server-side cursor. |
-| `internal/safesql` | The pure SQL check behind restricted mode: parse, statement kinds, function denylist and policy, classification. |
+| `internal/query` | The `execute_sql` tool: one statement per call, checked in restricted mode and passed through the volatility gate, read through a server-side cursor. |
+| `internal/safesql` | The SQL check behind restricted mode: parse, statement kinds, function denylist and policy, classification. It needs no database, except `Gate`, which resolves the undecided function calls against `pg_proc`. |
 | `internal/schema` | The schema tools `list_schemas`, `list_objects` and `get_object_details`. |
 | `internal/server` | The MCP plumbing shared by every tool: the registry, argument decoding, error conversion, annotations and the per-call log line. |
 | `internal/stats` | The tools reading server statistics, such as `get_top_queries`. |

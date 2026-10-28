@@ -1,7 +1,8 @@
 // Package safesql decides whether one SQL statement may run in restricted
 // mode. It parses the statement with libpg_query and checks the statement
-// type and every function call against a Policy. The package is pure: it
-// never touches a database.
+// type and every function call against a Policy, without a database. Gate is
+// the one exception: the calls no name rule settles are resolved against
+// pg_proc, inside the transaction that is about to run the statement.
 package safesql
 
 import (

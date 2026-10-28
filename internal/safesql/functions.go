@@ -10,7 +10,10 @@ type call struct {
 	schema string // second-to-last name part, lowercase, empty if unqualified
 	name   string // last name part, lowercase
 	full   string // all name parts joined by '.', as parsed
-	loc    float64
+	// rawSchema and rawName are those two parts with the case the parser
+	// reported, which is the spelling pg_proc holds for a quoted identifier.
+	rawSchema, rawName string
+	loc                float64
 }
 
 // funcCalls returns every FuncCall anywhere under n, in source order. The
@@ -32,9 +35,14 @@ func funcCalls(n any) []call {
 		if len(parts) == 0 {
 			return
 		}
-		c := call{name: strings.ToLower(parts[len(parts)-1]), full: strings.Join(parts, ".")}
+		c := call{
+			name:    strings.ToLower(parts[len(parts)-1]),
+			rawName: parts[len(parts)-1],
+			full:    strings.Join(parts, "."),
+		}
 		if len(parts) > 1 {
 			c.schema = strings.ToLower(parts[len(parts)-2])
+			c.rawSchema = parts[len(parts)-2]
 		}
 		c.loc, _ = body["location"].(float64)
 		calls = append(calls, c)

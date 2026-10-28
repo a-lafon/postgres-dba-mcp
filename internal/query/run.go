@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/a-lafon/postgres-dba-mcp/internal/format"
+	"github.com/a-lafon/postgres-dba-mcp/internal/safesql"
 )
 
 const (
@@ -33,6 +34,20 @@ type result struct {
 
 // txRunner is db.DB.ReadOnly or db.DB.ReadWrite.
 type txRunner func(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx) error) error
+
+// withVolatilityGate wraps run so that the gate settles refs in the very
+// transaction about to run the statement: the names then resolve against the
+// same search_path, and nothing can be created in between.
+func withVolatilityGate(run txRunner, refs []safesql.FuncRef) txRunner {
+	return func(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx) error) error {
+		return run(ctx, func(ctx context.Context, tx pgx.Tx) error {
+			if err := safesql.Gate(ctx, tx, refs); err != nil {
+				return err
+			}
+			return fn(ctx, tx)
+		})
+	}
+}
 
 // runStatement runs sql in a transaction started by run, through a cursor when cursor is set.
 func runStatement(ctx context.Context, run txRunner, sql string, cursor bool, maxRows int) (result, error) {
