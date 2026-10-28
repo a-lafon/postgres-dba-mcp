@@ -454,3 +454,38 @@ func TestFailingCheckIsIsolated(t *testing.T) {
 		t.Errorf("other sections missing:\n%s", text)
 	}
 }
+
+// A column type can narrow a sequence's range to a single value; the share-used division would then fail,
+// and runOne turns that into one "check failed" line for the whole section, hiding every real warning.
+// A narrowed range must not be dropped either: a sequence whose range falls entirely past its column
+// overflows on its very next value, which is the loudest thing this check has to say.
+func TestSequenceSingleValueRange(t *testing.T) {
+	name := testpg.TempDB(t)
+	a := admin(t, testpg.DSN(testpg.Admin(t), name))
+	exec(t, a, "CREATE TABLE public.narrow_one (c smallint)")
+	exec(t, a, "CREATE SEQUENCE public.one_value_seq AS bigint MINVALUE 32767 MAXVALUE 100000 START 32767")
+	exec(t, a, "ALTER SEQUENCE public.one_value_seq OWNED BY public.narrow_one.c")
+	exec(t, a, "SELECT nextval('public.one_value_seq')")
+	exec(t, a, "GRANT SELECT ON SEQUENCE public.one_value_seq TO pgdba_ro")
+	// A sequence past the end of its column: every nextval overflows it.
+	exec(t, a, "CREATE TABLE public.narrow_two (c integer)")
+	exec(t, a, "CREATE SEQUENCE public.beyond_seq AS bigint MINVALUE 3000000000 MAXVALUE 4000000000 START 3000000000")
+	exec(t, a, "ALTER SEQUENCE public.beyond_seq OWNED BY public.narrow_two.c")
+	exec(t, a, "SELECT nextval('public.beyond_seq')")
+	exec(t, a, "GRANT SELECT ON SEQUENCE public.beyond_seq TO pgdba_ro")
+	// A third sequence, genuinely nearly full: it is what the first one would hide.
+	exec(t, a, "CREATE SEQUENCE public.nearly_full AS integer START 2000000000")
+	exec(t, a, "SELECT nextval('public.nearly_full')")
+	exec(t, a, "GRANT SELECT ON SEQUENCE public.nearly_full TO pgdba_ro")
+
+	text, isErr := callHealth(t, testpg.DSN(testpg.RO(t), name), str("sequence"))
+	if isErr || strings.Contains(text, "check failed") {
+		t.Fatalf("sequence check failed (error %v):\n%s", isErr, text)
+	}
+	if !strings.Contains(text, "public.nearly_full (integer): 93.1% used") {
+		t.Errorf("the sequence that matters is missing:\n%s", text)
+	}
+	if !strings.Contains(text, "public.beyond_seq (public.narrow_two.c, integer): 100.0% used") {
+		t.Errorf("the sequence that already overflows its column is missing:\n%s", text)
+	}
+}

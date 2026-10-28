@@ -13,7 +13,10 @@ SELECT
     coalesce(o.relname, '') AS owner_table,
     coalesce(o.attname, '') AS owner_column,
     -- Share of the range consumed: from min toward max when ascending, from max toward min when descending.
-    CASE WHEN s.increment_by > 0
+    -- A column type can narrow the range to one value or to none at all (every nextval overflows the column):
+    -- such a sequence is full by definition, and dividing by its width would fail the whole check.
+    CASE WHEN b.max_value <= b.min_value THEN 1.0
+        WHEN s.increment_by > 0
         THEN (s.last_value::float8 - b.min_value::float8) / (b.max_value::float8 - b.min_value::float8)
         ELSE (b.max_value::float8 - s.last_value::float8) / (b.max_value::float8 - b.min_value::float8)
     END AS used,
