@@ -113,8 +113,12 @@ func (r indexResult) render() section {
 		if len(list) > maxUnusedIx {
 			list = append(list[:maxUnusedIx:maxUnusedIx], "…")
 		}
-		s.items = append(s.items, item{"rarely used", fmt.Sprintf("rarely used (<= %d scans): %d indexes, %s: %s",
-			unusedMaxScans, len(r.Unused), format.Size(total), strings.Join(list, ", "))})
+		days := fmt.Sprintf("%d days", r.StatsDays)
+		if r.StatsDays == 1 {
+			days = "1 day"
+		}
+		s.items = append(s.items, item{"rarely used", fmt.Sprintf("rarely used (<= %d scans, over up to %s since %s): %d indexes, %s: %s",
+			unusedMaxScans, days, r.StatsSince.UTC().Format("2006-01-02 15:04 UTC"), len(r.Unused), format.Size(total), strings.Join(list, ", "))})
 	}
 	return s
 }

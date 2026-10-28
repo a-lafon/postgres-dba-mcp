@@ -158,7 +158,7 @@ func TestFixtureWithTraps(t *testing.T) {
 		}
 	}
 	for _, re := range []string{
-		`(?m)^             ! rarely used \(<= 50 scans\): \d+ indexes, [\d.]+ [kMG]B: .*health\.ix_unused [\d.]+ [kM]B 0 scans`,
+		`(?m)^             ! rarely used \(<= 50 scans, over up to \d+ days? since \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC\): \d+ indexes, [\d.]+ [kMG]B: .*health\.ix_unused [\d.]+ [kM]B 0 scans`,
 		`(?m)^             ! rarely used .*health\.<partition>_customer_id_idx \(3 partitions of health\.payment_p\) [\d.]+ [kM]?B \d+ scans?`,
 		`(?m)^connection   OK \(cluster: \d+ total, \d+ idle in transaction\)$`,
 		`(?m)^buffer       (OK \(cache hit [\d.]+% (tables|indexes).*\)|! .*)$`,
@@ -166,6 +166,12 @@ func TestFixtureWithTraps(t *testing.T) {
 		if !regexp.MustCompile(re).MatchString(text) {
 			t.Errorf("no match for %s in:\n%s", re, text)
 		}
+	}
+	// The window comes from the server: it starts in the past and its length is not negative.
+	if m := regexp.MustCompile(`over up to (-?\d+) days? since (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) UTC`).FindStringSubmatch(text); m == nil {
+		t.Errorf("no statistics window in:\n%s", text)
+	} else if since, err := time.Parse("2006-01-02 15:04", m[2]); err != nil || since.After(time.Now()) || strings.HasPrefix(m[1], "-") {
+		t.Errorf("statistics window %q since %q is not in the past (%v)", m[1], m[2], err)
 	}
 	if strings.Contains(text, "health.payment_p_2024_customer_id_idx") {
 		t.Errorf("a partition index is reported on its own:\n%s", text)

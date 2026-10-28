@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func names(cs []check) string {
@@ -65,7 +66,8 @@ func TestRenderTrapReport(t *testing.T) {
 				Index:    indexInfo{Schema: "health", Name: "ix_dup_a", Columns: []string{"account_id"}},
 				Covering: indexInfo{Schema: "health", Name: "ix_dup_b", Columns: []string{"account_id", "created_at"}},
 			}},
-			Unused: []unusedIndex{{Schema: "health", Name: "ix_unused", Size: 1258291}, {Schema: "health", Name: "ix_dup_b", Size: 352256, Scans: 1}},
+			Unused:     []unusedIndex{{Schema: "health", Name: "ix_unused", Size: 1258291}, {Schema: "health", Name: "ix_dup_b", Size: 352256, Scans: 1}},
+			StatsSince: time.Date(2026, 10, 23, 8, 0, 0, 0, time.UTC), StatsDays: 5,
 		}.render(),
 		connectionResult{Total: 7}.render(),
 		vacuumResult{Dead: []deadRowsTable{{"health", "bloated", 40000, 100000, nil}}}.render(),
@@ -83,7 +85,7 @@ func TestRenderTrapReport(t *testing.T) {
 	}
 	want := `index        ! invalid: health.ix_invalid on health.dups
              ! duplicate: health.ix_dup_a (account_id) covered by health.ix_dup_b (account_id, created_at)
-             ! rarely used (<= 50 scans): 2 indexes, 1.5 MB: health.ix_unused 1.2 MB 0 scans, health.ix_dup_b 344 kB 1 scan
+             ! rarely used (<= 50 scans, over up to 5 days since 2026-10-23 08:00 UTC): 2 indexes, 1.5 MB: health.ix_unused 1.2 MB 0 scans, health.ix_dup_b 344 kB 1 scan
 connection   OK (cluster: 7 total, 0 idle in transaction)
 vacuum       ! dead rows: health.bloated 28.6% (40k dead, 100k live), last vacuum never
 sequence     ! health.legacy_id_seq (health.legacy.id, integer): 91.0% used, 193M left
@@ -120,8 +122,8 @@ func TestRarelyUsedList(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		u = append(u, unusedIndex{Schema: "s", Name: fmt.Sprintf("i%d", i), Size: 1024})
 	}
-	got := indexResult{Unused: u}.render().items[0].text
-	if !strings.HasPrefix(got, "rarely used (<= 50 scans): 12 indexes, 12 kB: s.i0 1.0 kB 0 scans") || !strings.HasSuffix(got, "s.i9 1.0 kB 0 scans, …") {
+	got := indexResult{Unused: u, StatsSince: time.Date(2026, 10, 27, 8, 0, 0, 0, time.UTC), StatsDays: 1}.render().items[0].text
+	if !strings.HasPrefix(got, "rarely used (<= 50 scans, over up to 1 day since 2026-10-27 08:00 UTC): 12 indexes, 12 kB: s.i0 1.0 kB 0 scans") || !strings.HasSuffix(got, "s.i9 1.0 kB 0 scans, …") {
 		t.Errorf("got %q", got)
 	}
 }
@@ -321,8 +323,8 @@ func TestRenderGroupsPartitionFindings(t *testing.T) {
 			[]string{"duplicate: public.payment_p1_customer_id_idx (customer_id) covered by public.idx_fk_payment_p1_customer_id (customer_id)"}},
 		{"non-partition finding stays verbatim", indexResult{Duplicates: append([]dupPair{plain}, dups...)},
 			[]string{"duplicate: health.ix_dup_a (account_id) covered by health.ix_dup_b (account_id, created_at)", "duplicate on 3 partitions of public.payment: "}},
-		{"rarely used keeps count and total, groups the partition indexes", indexResult{Unused: unused},
-			[]string{"rarely used (<= 50 scans): 4 indexes, 5.0 kB: public.<partition>_amount_idx (3 partitions of public.payment) 3.0 kB 6 scans, health.ix_unused 2.0 kB 0 scans"}},
+		{"rarely used keeps count and total, groups the partition indexes", indexResult{Unused: unused, StatsSince: time.Date(2026, 10, 23, 8, 0, 0, 0, time.UTC), StatsDays: 5},
+			[]string{"rarely used (<= 50 scans, over up to 5 days since 2026-10-23 08:00 UTC): 4 indexes, 5.0 kB: public.<partition>_amount_idx (3 partitions of public.payment) 3.0 kB 6 scans, health.ix_unused 2.0 kB 0 scans"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

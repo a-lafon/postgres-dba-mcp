@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -48,6 +49,8 @@ type indexResult struct {
 	Duplicates []dupPair
 	Bloated    []bloatedIndex
 	Unused     []unusedIndex // largest first
+	StatsSince time.Time     // start of the window Unused[].Scans counts over, zero when Unused is empty
+	StatsDays  int           // whole days from StatsSince to the check, by the database clock, zero when Unused is empty
 }
 
 func checkIndex(ctx context.Context, tx pgx.Tx) (result, error) {
@@ -80,7 +83,7 @@ func checkIndex(ctx context.Context, tx pgx.Tx) (result, error) {
 		return nil, fmt.Errorf("unused indexes: %w", err)
 	}
 	res.Unused, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (u unusedIndex, err error) {
-		err = r.Scan(&u.Schema, &u.Name, &u.Size, &u.Scans, &u.Table, &u.Root)
+		err = r.Scan(&u.Schema, &u.Name, &u.Size, &u.Scans, &u.Table, &u.Root, &res.StatsSince, &res.StatsDays)
 		return
 	})
 	if err != nil {
