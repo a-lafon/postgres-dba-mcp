@@ -10,6 +10,7 @@ on:
 permissions:
   contents: write # create the GitHub release and upload the archives
   packages: write # push the image to GHCR
+  id-token: write # OIDC token the MCP Registry trades for a publish token
 
 jobs:
   release:
@@ -19,6 +20,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # Before anything is published: the registry takes a version once and refuses it forever after.
+      - name: server.json carries the tag being released
+        run: |
+          want=${GITHUB_REF_NAME#v}
+          got=$(jq -r '.version + " " + (.packages[0].identifier | split(":")[-1])' server.json)
+          test "$got" = "$want $want" || { echo "server.json says '$got', tag is '$want'"; exit 1; }
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -58,3 +65,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # A fine-grained token that writes the Homebrew tap only: GITHUB_TOKEN cannot write to another repository.
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      # Last: the image it points at must already be on GHCR for the registry to verify ownership.
+      - name: Publish to the MCP Registry
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.6/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
