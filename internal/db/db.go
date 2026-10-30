@@ -95,11 +95,13 @@ type DB struct {
 	// searchPath is what the connection URI asked for, empty when it asked for nothing.
 	searchPath string
 
-	mu        sync.Mutex
-	info      *Info
-	infoRead  time.Time
-	audit     auditState
-	auditDone chan struct{} // closed once the role audit has completed
+	mu         sync.Mutex
+	info       *Info
+	infoRead   time.Time
+	hypopg     bool // last catalog answer of hasHypopg, for the calls that never read Info
+	hypopgRead time.Time
+	audit      auditState
+	auditDone  chan struct{} // closed once the role audit has completed
 }
 
 type auditState int
@@ -200,16 +202,27 @@ func (d *DB) hasHypopg(ctx context.Context, conn *pgx.Conn) (bool, error) {
 	d.mu.Lock()
 	info := d.info
 	fresh := time.Since(d.infoRead) < infoTTL
+	hypopg, hypopgFresh := d.hypopg, time.Since(d.hypopgRead) < infoTTL
 	d.mu.Unlock()
 	if info != nil && fresh {
 		_, ok := info.Extensions["hypopg"]
 		return ok, nil
 	}
+	// The catalog answer has its own cache: execute_sql never reads Info, so without it every release of a
+	// connection would ask again, which is one round trip on every call of the tool.
+	if hypopgFresh {
+		return hypopg, nil
+	}
 	// Stale: ask the catalog rather than keep resetting an extension that may be gone, which would fail
 	// every release and have the pool rebuild the connection on each call.
 	var ok bool
-	err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'hypopg')").Scan(&ok)
-	return ok, err
+	if err := conn.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'hypopg')").Scan(&ok); err != nil {
+		return false, err
+	}
+	d.mu.Lock()
+	d.hypopg, d.hypopgRead = ok, time.Now()
+	d.mu.Unlock()
+	return ok, nil
 }
 
 // tx wraps pgx.Tx so that every statement travels on the extended protocol, which accepts a single statement.
