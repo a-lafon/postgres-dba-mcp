@@ -15,6 +15,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # The job has no step that should take minutes on its own, and a release left hanging holds the tag with
+    # nothing published: fail it rather than wait out the six hours GitHub allows by default.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
