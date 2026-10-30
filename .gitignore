@@ -3,4 +3,5 @@ dist/
 .env
 .claude/
 CLAUDE.md
+openspec/
 .zig-cache/
