@@ -19,7 +19,7 @@ import (
 )
 
 // Groups lists the tool groups, in the order used by error messages.
-var Groups = []string{"schema", "query", "explain", "stats", "health", "index"}
+var Groups = []string{"schema", "query", "explain", "stats", "health", "index", "locks"}
 
 // Access modes.
 const (

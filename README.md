@@ -11,7 +11,7 @@
 
 Let Claude Code, Codex or any MCP client explore a PostgreSQL database, run SQL, read query plans, test hypothetical indexes, find the slowest queries and check the database's health, without flooding the model's context or escaping read-only mode.
 
-A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It replaces [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0 with the same nine tools and the same parameters, in one static binary. Switching is one line of client configuration; what the model receives changes (compact CSV, bounded results, one statement per call), as listed in [MIGRATION.md](MIGRATION.md).
+A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It is a drop-in replacement for [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0, with its nine tools under the same names and the same parameters, plus `analyze_locks` of its own, in one static binary. Switching is one line of client configuration; what the model receives changes (compact CSV, bounded results, one statement per call), as listed in [MIGRATION.md](MIGRATION.md).
 
 ## Why
 
@@ -36,7 +36,7 @@ Against crystaldba/postgres-mcp 0.3.0 on the same PostgreSQL 17 database and the
 - **16 MB** of memory against 248 MB, both in a Linux container; cold start of **11 ms** for the binary run directly, against 1.4 s for crystaldba including `docker run`;
 - **27 of 27** agent tasks solved with Claude Code, against 25 of 27, measured on 0.1.0, before the volatility gate.
 
-The other side: the nine tool definitions are 25 % larger (2459 tokens against 1965), and the tokens of a whole agent task are comparable.
+The other side: the nine definitions of the tools crystaldba also has are 25 % larger (2459 tokens against 1965), and the tokens of a whole agent task are comparable. `analyze_locks`, which crystaldba has no equivalent of, adds about 160 tokens on top; drop `locks` from `--tools` to get the 0.3.0 tool set exactly.
 
 Method, every number (including where postgres-dba-mcp does worse) and charts: [BENCHMARK.md](BENCHMARK.md). The bench harness is not published. Its inputs are, so the measures can be redone with any client: the data set in [bench/data](bench/data), the attack and legitimate corpora in [testdata/safesql](testdata/safesql), and the scenarios and tasks listed in BENCHMARK.md.
 
@@ -218,6 +218,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO pgdba_ro;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO pgdba_ro;   -- tables created later
 ```
 
+Without `pg_read_all_stats`, `analyze_locks` still reports the pids, the locks and the chains, but the waits, states, transaction ages and query texts of other roles' sessions come back as `\N` and it says so in a `-- session details hidden: grant pg_read_all_stats to <role> …` line. From PostgreSQL 15 on, a `NOINHERIT` member of `pg_read_all_stats` reads nothing either, and is reported the same way; PostgreSQL 14 grants it on membership alone. Either way the line appears only when the report really hides something.
+
 Repeat the `USAGE`, `SELECT` and `ALTER DEFAULT PRIVILEGES` lines for every other schema the agent should see. After the first connection the server warns on stderr when the role is a superuser, bypasses row-level security, owns tables, or belongs to a powerful built-in role (`pg_read_server_files`, `pg_write_server_files`, `pg_execute_server_program`, `pg_signal_backend`, `rds_superuser`, `azure_pg_admin`). It also warns when PostgreSQL is newer than 18, the newest version whose built-in functions the restricted-mode denylist was checked against.
 
 ## Sensitive columns
@@ -250,7 +252,7 @@ Flags can come before or after the database URI, as `--name=value` or `--name va
 |---|---|---|
 | `--access-mode` | `restricted` | `restricted` (read-only, with the SQL checks) or `unrestricted` (`execute_sql` can modify the database) |
 | `--transport` | `stdio` | `stdio`, `streamable-http`, or `sse` (deprecated) |
-| `--tools` | `all` | Comma list of tool groups: `schema`, `query`, `explain`, `stats`, `health`, `index`, or `all` |
+| `--tools` | `all` | Comma list of tool groups: `schema`, `query`, `explain`, `stats`, `health`, `index`, `locks`, or `all` |
 | `--max-rows` | `100` | Default row limit of a result (at least 1, at most `--max-rows-limit`) |
 | `--max-rows-limit` | `1000` | Highest `max_rows` a client may ask for |
 | `--max-bytes` | `32768` | Size cap of one tool result in bytes (at least 1024) |
@@ -283,6 +285,7 @@ Tools belong to a group, which `--tools` can switch off.
 - `analyze_db_health` (health): check indexes, connections, vacuum and dead rows, sequences, replication, cache hit rates and constraints, and report the problems only.
 - `analyze_query_indexes` (index): recommend indexes for up to 10 given queries.
 - `analyze_workload_indexes` (index): recommend indexes for the frequent slow statements of `pg_stat_statements`.
+- `analyze_locks` (locks): report the lock waits in progress of the current database, one row per blocked session and direct blocker, with the root of each chain, the lock and the durations. `waiting` is the age of the blocked statement, an upper bound on the wait, because PostgreSQL records no start time for a lock wait. It only reads; it never cancels or terminates a session. With nothing waiting it answers `-- no lock wait in progress`. Without `pg_read_all_stats` it still reports the pids and the locks, but the durations, states and query texts of other roles' sessions come back as `\N`.
 
 Hypothetical indexes and the index tools need the `hypopg` extension; `get_top_queries` and `analyze_workload_indexes` need `pg_stat_statements` (also listed in `shared_preload_libraries`).
 

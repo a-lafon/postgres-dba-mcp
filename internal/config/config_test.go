@@ -23,7 +23,7 @@ func TestParseErrors(t *testing.T) {
 		{"bad glob", []string{"--allow-function=[", "postgres://u@h/db"}, nil, `--allow-function: invalid pattern "["`},
 		{"empty part", []string{"--allow-function=a.", "postgres://u@h/db"}, nil, `--allow-function: invalid pattern "a."`},
 		{"tools group", []string{"--tools=schema,foo", "postgres://u@h/db"}, nil,
-			`--tools: unknown group "foo" (valid: schema, query, explain, stats, health, index, all)`},
+			`--tools: unknown group "foo" (valid: schema, query, explain, stats, health, index, locks, all)`},
 		{"rows above limit", []string{"--max-rows=5000", "--max-rows-limit=1000", "postgres://u@h/db"}, nil,
 			"--max-rows: 5000 exceeds --max-rows-limit 1000"},
 		{"cell above limit", []string{"--max-cell=500", "--max-cell-limit=400", "postgres://u@h/db"}, nil,
