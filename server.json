@@ -7,11 +7,11 @@
     "url": "https://github.com/a-lafon/postgres-dba-mcp",
     "source": "github"
   },
-  "version": "0.3.2",
+  "version": "0.3.3",
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/a-lafon/postgres-dba-mcp:0.3.2",
+      "identifier": "ghcr.io/a-lafon/postgres-dba-mcp:0.3.3",
       "transport": {
         "type": "stdio"
       },
