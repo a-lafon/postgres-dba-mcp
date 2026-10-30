@@ -106,10 +106,35 @@ func shorten(s string, max int) (string, bool) {
 	if n <= max+minCut {
 		return s, false
 	}
-	cut := 0
-	for i := 0; i < max; i++ {
-		_, w := utf8.DecodeRuneInString(s[cut:])
-		cut += w
+	return cut(s, max, n), true
+}
+
+// Cut is Shorten on a cell read from the server: it copies only the code points it keeps, so a reader can hold
+// a bounded result without ever holding the whole value. The text it returns is what Shorten would have
+// returned, and Render leaves it alone when it renders with the same max.
+func Cut(c []byte, max int) (Cell, bool) {
+	if len(c) <= max+minCut {
+		return append(Cell{}, c...), false
 	}
-	return fmt.Sprintf("%s…[+%d chars]", s[:cut], n-max), true
+	n := utf8.RuneCount(c)
+	if n <= max+minCut {
+		return append(Cell{}, c...), false
+	}
+	// The first max code points take at most 4 bytes each, so copying that many is enough to cut.
+	head := c
+	if len(head) > 4*max {
+		head = head[:4*max]
+	}
+	return Cell(cut(string(head), max, n)), true
+}
+
+// cut returns the first max code points of s followed by the marker, n being the code points of the whole value
+// s is the start of. s must hold at least max code points.
+func cut(s string, max, n int) string {
+	i := 0
+	for j := 0; j < max; j++ {
+		_, w := utf8.DecodeRuneInString(s[i:])
+		i += w
+	}
+	return fmt.Sprintf("%s…[+%d chars]", s[:i], n-max)
 }

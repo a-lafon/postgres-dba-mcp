@@ -268,6 +268,42 @@ func TestBoundedRead(t *testing.T) {
 	}
 }
 
+// TestBoundedReadOfLargeValues reads rows far larger than the result can hold. The cells are cut on the way in,
+// so the call keeps no more than it renders: holding them whole took a gigabyte for a 22 kB answer.
+func TestBoundedReadOfLargeValues(t *testing.T) {
+	admin := adminConn(t)
+	if _, err := admin.Exec(context.Background(), `CREATE TABLE exec.big (id int, doc text);
+		INSERT INTO exec.big SELECT g, repeat('x', 5*1024*1024) FROM generate_series(1, 20) g;
+		GRANT SELECT ON exec.big TO pgdba_ro`); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := admin.Exec(context.Background(), "DROP TABLE IF EXISTS exec.big"); err != nil {
+			t.Error(err)
+		}
+	})
+	c := newClient(t, testpg.RO(t))
+	const sql = "SELECT id, doc FROM exec.big ORDER BY id"
+	c.ok(t, sql, 20) // warms the parser, the pool and the driver's read buffer: they are not part of the bound
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	text := c.ok(t, sql, 20)
+	runtime.ReadMemStats(&after)
+
+	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	if len(lines) != 1+20+2 || !strings.HasPrefix(lines[1], "1,xxx") || !strings.HasSuffix(lines[1], "…[+5242680 chars]") {
+		t.Fatalf("lines = %d, first row %q", len(lines), lines[1])
+	}
+	if want := "-- 20 cells shortened (doc); pass max_cell (up to 10000) to read more"; lines[len(lines)-1] != want {
+		t.Errorf("footer = %q, want %q", lines[len(lines)-1], want)
+	}
+	if grown := after.TotalAlloc - before.TotalAlloc; grown > 16<<20 {
+		t.Errorf("Go heap allocated %d bytes for a %d-byte result", grown, len(text))
+	}
+}
+
 func TestUnrestrictedExecution(t *testing.T) {
 	admin := adminConn(t)
 	drop := func() {

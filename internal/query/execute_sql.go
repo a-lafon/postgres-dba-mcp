@@ -108,7 +108,7 @@ func (x *executor) handle(ctx context.Context, args json.RawMessage) (string, er
 	if safesql.HasParams(in.SQL) {
 		return "", errors.New("execute_sql takes no parameters: inline the values in the SQL (explain_query accepts $n)")
 	}
-	res, err := x.execute(ctx, in.SQL, maxRows)
+	res, err := x.execute(ctx, in.SQL, limits{rows: maxRows, cell: maxCell, bytes: x.cfg.MaxBytes})
 	if err != nil {
 		return "", format.WithSQL(x.timeoutHint(err), in.SQL)
 	}
@@ -145,7 +145,7 @@ func unrestrictedHint(sql string, err error) error {
 }
 
 // execute validates sql for the access mode, then runs it in the matching transaction runner.
-func (x *executor) execute(ctx context.Context, sql string, maxRows int) (result, error) {
+func (x *executor) execute(ctx context.Context, sql string, lim limits) (result, error) {
 	if x.cfg.AccessMode == config.Restricted {
 		st, err := safesql.Check(sql, x.policy)
 		if err != nil {
@@ -156,7 +156,7 @@ func (x *executor) execute(ctx context.Context, sql string, maxRows int) (result
 			run = withVolatilityGate(run, st.Unresolved)
 		}
 		// Read only and always rolled back: bounding the work the server does is the point.
-		return runStatement(ctx, run, sql, st.Kind == safesql.Select, false /* drain */, maxRows)
+		return runStatement(ctx, run, sql, st.Kind == safesql.Select, false /* drain */, lim)
 	}
 	count, kind, err := safesql.Classify(sql)
 	switch {
@@ -174,5 +174,5 @@ func (x *executor) execute(ctx context.Context, sql string, maxRows int) (result
 	// hides its function calls and such a statement is not drained; upgrade by resolving them in the
 	// catalog, the way the restricted-mode gate would have to.
 	cursor := kind == safesql.Select
-	return runStatement(ctx, x.run.ReadWrite, sql, cursor, cursor && safesql.HasFuncCall(sql), maxRows)
+	return runStatement(ctx, x.run.ReadWrite, sql, cursor, cursor && safesql.HasFuncCall(sql), lim)
 }

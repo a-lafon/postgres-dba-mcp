@@ -17,7 +17,10 @@ type Table struct {
 	Rows    [][]Cell // at most Limit rows
 	More    bool     // the caller fetched Limit+1 rows and got the extra one
 	Limit   int
-	Prefix  string // lines written before the table, counted in the byte budget
+	// Shortened marks, per row and column, the cells the caller already cut with Cut; the footer counts them
+	// like the ones Render cuts itself. A missing row or column means not cut.
+	Shortened [][]bool
+	Prefix    string // lines written before the table, counted in the byte budget
 	// Caps holds, per column, a cell limit that replaces the maxCell given to Render; 0 or a missing entry keeps maxCell.
 	Caps []int
 	// CellLimit is the highest max_cell a caller may ask for; when above the maxCell given to Render, a shortened
@@ -161,6 +164,9 @@ func Render(t Table, maxBytes, maxCell int, d time.Duration) (string, error) {
 		rowHit := hit
 		for j, c := range row {
 			text, short := cellText(c, t.cap(j, maxCell))
+			if i < len(t.Shortened) && j < len(t.Shortened[i]) && t.Shortened[i][j] {
+				short = true
+			}
 			if j > 0 {
 				line.WriteByte(',')
 			}
