@@ -33,8 +33,7 @@ jobs:
       - name: go.mod and go.sum are tidy
         run: |
           go mod tidy
-          # The bench module is not in the published repository, only its data (scripts/public-branch.sh).
-          if [ -f bench/go.mod ]; then (cd bench && go mod tidy); fi
+          (cd bench && go mod tidy)
           git diff --exit-code -- go.mod go.sum bench/go.mod bench/go.sum
       # golangci-lint's govet runs every go vet analyzer, so no separate go vet step.
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
@@ -45,7 +44,6 @@ jobs:
       - name: Unit tests
         run: go test -race ./...
       - name: Bench unit tests
-        if: hashFiles('bench/go.mod') != ''
         working-directory: bench
         run: go vet ./... && go test -race ./...
 

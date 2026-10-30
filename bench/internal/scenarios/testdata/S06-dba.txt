@@ -1,0 +1,4 @@
+id,txt,empty,num,arr,iv,ts,bin
+1,hello,"",532.10,"{1,2}",1 day 02:00:00,2026-03-02 10:14:00+00,\xdeadbeef
+2,\N,\N,\N,\N,\N,\N,\N
+-- 2 rows, 2 ms

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "pg": {
+      "command": "bench/bin/postgres-dba-mcp",
+      "args": ["--access-mode=restricted"],
+      "env": { "DATABASE_URI": "postgres://bench_ro:bench@localhost:55433/bench" }
+    }
+  }
+}
