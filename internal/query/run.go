@@ -78,6 +78,14 @@ func fetchCursor(ctx context.Context, tx pgx.Tx, sql string, drain bool, lim lim
 		return result{}, shiftPosition(err)
 	}
 	res, err := collect(ctx, tx, fmt.Sprintf("FETCH FORWARD %d FROM %s", lim.rows+1, cursorName), lim)
+	if err == nil && res.More && !drain {
+		// A view, an RLS policy, an operator or a cast hides its function calls from the statement text, so ask
+		// the server instead: rows already written mean the statement must run to its end. It has to be the
+		// written rows, not pg_current_xact_id_if_assigned(): SELECT ... FOR UPDATE assigns a transaction id to
+		// write the locker into xmax, and draining on that would lock every row of a truncated read. The _user_
+		// view for the same reason, _all_ counts catalog writes a plain FOR UPDATE makes on its own.
+		err = tx.QueryRow(ctx, "SELECT coalesce(sum(n_tup_ins + n_tup_upd + n_tup_del), 0) > 0 FROM pg_stat_xact_user_tables").Scan(&drain)
+	}
 	if err == nil && drain {
 		_, err = tx.Exec(ctx, "MOVE FORWARD ALL IN "+cursorName)
 	}

@@ -170,9 +170,11 @@ func (x *executor) execute(ctx context.Context, sql string, lim limits) (result,
 	// This transaction commits, so a statement whose rows have side effects must run to its end, truncated
 	// output or not. Without a function call there is nothing to leave half done, and draining would make
 	// every truncated SELECT pay for the rows nobody reads.
-	// shortcut: the statement text is all this reads, so a view, an RLS policy, an operator or a cast
-	// hides its function calls and such a statement is not drained; upgrade by resolving them in the
-	// catalog, the way the restricted-mode gate would have to.
+	// A call this text does not name is caught by fetchCursor, which asks the server what the statement has
+	// already written.
+	// shortcut: a hidden call that writes only past the first batch is named nowhere and has written nothing
+	// to find, so such a statement is not drained; upgrade by resolving views, policies, operators and casts
+	// in the catalog, the way the restricted-mode gate would have to.
 	cursor := kind == safesql.Select
 	return runStatement(ctx, x.run.ReadWrite, sql, cursor, cursor && safesql.HasFuncCall(sql), lim)
 }

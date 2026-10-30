@@ -398,7 +398,7 @@ func TestUnrestrictedSelectRunsToCompletion(t *testing.T) {
 	admin := adminConn(t)
 	drop := func() {
 		if _, err := admin.Exec(context.Background(),
-			"DROP FUNCTION IF EXISTS app_rw.bump(int); DROP TABLE IF EXISTS app_rw.t4"); err != nil {
+			"DROP VIEW IF EXISTS app_rw.v4; DROP FUNCTION IF EXISTS app_rw.bump(int); DROP TABLE IF EXISTS app_rw.t4"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -407,7 +407,9 @@ func TestUnrestrictedSelectRunsToCompletion(t *testing.T) {
 	if _, err := admin.Exec(context.Background(), `CREATE TABLE app_rw.t4 (x int);
 		GRANT ALL ON app_rw.t4 TO pgdba_rw;
 		CREATE FUNCTION app_rw.bump(v int) RETURNS int LANGUAGE sql
-		  AS 'INSERT INTO app_rw.t4 VALUES (v) RETURNING v'`); err != nil {
+		  AS 'INSERT INTO app_rw.t4 VALUES (v) RETURNING v';
+		CREATE VIEW app_rw.v4 AS SELECT app_rw.bump(x) AS v FROM generate_series(1, 500) x;
+		GRANT SELECT ON app_rw.v4 TO pgdba_rw`); err != nil {
 		t.Fatal(err)
 	}
 	const sql = "SELECT app_rw.bump(x) FROM generate_series(1, 500) x"
@@ -431,6 +433,47 @@ func TestUnrestrictedSelectRunsToCompletion(t *testing.T) {
 			t.Errorf("rows = %s, want 500: the restricted call touched the table", n)
 		}
 	})
+	// The view hides the function call from the statement text, so the drain decision cannot be read off the text.
+	t.Run("through a view", func(t *testing.T) {
+		if _, err := admin.Exec(context.Background(), "TRUNCATE app_rw.t4"); err != nil {
+			t.Fatal(err)
+		}
+		text := c.ok(t, "SELECT * FROM app_rw.v4", 10)
+		if !strings.Contains(text, "-- 10 rows, truncated (more than 10), ") {
+			t.Errorf("got %q", text)
+		}
+		if n := count(); n != "500" {
+			t.Errorf("rows written = %s, want 500: the statement was committed half done", n)
+		}
+	})
+}
+
+// A truncated SELECT ... FOR UPDATE must lock only the rows it fetched: locking assigns a transaction id, so any
+// drain decision taken from that id alone would turn this into a full scan holding a lock on every row.
+func TestUnrestrictedSelectForUpdateLocksOnlyWhatItReads(t *testing.T) {
+	admin := adminConn(t)
+	drop := func() {
+		if _, err := admin.Exec(context.Background(), "DROP TABLE IF EXISTS app_rw.t5"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	drop()
+	t.Cleanup(drop)
+	if _, err := admin.Exec(context.Background(), `CREATE TABLE app_rw.t5 (x int);
+		INSERT INTO app_rw.t5 SELECT generate_series(1, 500);
+		GRANT ALL ON app_rw.t5 TO pgdba_rw`); err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(t, testpg.RW(t), "--access-mode=unrestricted")
+
+	text := c.ok(t, "SELECT x FROM app_rw.t5 ORDER BY x FOR UPDATE", 10)
+	if !strings.Contains(text, "-- 10 rows, truncated (more than 10), ") {
+		t.Errorf("got %q", text)
+	}
+	// A locked row keeps the locker's id in xmax after the commit.
+	if n := scalar(t, admin, "SELECT count(*)::text FROM app_rw.t5 WHERE xmax::text <> '0'"); n != "11" {
+		t.Errorf("rows locked = %s, want 11 (max_rows + 1): the statement locked more than it read", n)
+	}
 }
 
 // In unrestricted mode a statement read without a cursor (DML with RETURNING, EXPLAIN) is drained to its end:
