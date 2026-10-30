@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "pg": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm", "--network", "bench_bench",
+        "-e", "DATABASE_URI=postgres://bench_ro:bench@pg:5432/bench",
+        "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b",
+        "--access-mode=restricted"
+      ]
+    }
+  }
+}

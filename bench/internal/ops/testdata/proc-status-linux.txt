@@ -1,0 +1,5 @@
+Name:	postgres-dba-mcp
+VmPeak:	  1240000 kB
+VmRSS:	   30720 kB
+RssAnon:	   20000 kB
+Threads:	8

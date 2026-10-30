@@ -1,0 +1,8 @@
+======================================================================
+postgres-dba-mcp [4242]: 64-bit    Footprint: 35 MB (16384 bytes per page)
+======================================================================
+
+Auxiliary data:
+    phys_footprint: 36 MB
+    phys_footprint_peak: 52 MB
+

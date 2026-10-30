@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu1","name":"mcp__pg__analyze_db_health","input":{}}]}}
+{"type":"result","subtype":"success","is_error":false,"duration_ms":12000,"num_turns":2,"result":"Priorities:\n1. Drop the duplicate index dup_events_acc_idx.\n2. Validate constraint amount_positive on traps.orders_nv.\n3. Rebuild the invalid index traps.inval_val_uidx.\n4. The sequence traps.legacy_id_seq is at 91%.","total_cost_usd":0.03,"usage":{"input_tokens":150,"output_tokens":250}}

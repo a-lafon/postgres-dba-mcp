@@ -1,0 +1,98 @@
+# Bench databases. `pg` holds the bench data set (port 55433); `fixture` is a copy of the test fixture used by the
+# security replay (port 55434). The repository's own fixture (port 55432) is never touched.
+name: bench
+
+services:
+  pg:
+    build:
+      context: ../testdata/docker
+      args:
+        PG_MAJOR: ${PG_MAJOR:-17}
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+    environment:
+      POSTGRES_PASSWORD: bench
+      POSTGRES_DB: bench
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    shm_size: 256mb
+    networks: [bench]
+    healthcheck:
+      # Over TCP: during init the entrypoint's temporary server listens on the Unix socket only.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "bench"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
+      start_period: 120s
+
+  fixture:
+    build:
+      context: ../testdata/docker
+      args:
+        PG_MAJOR: ${PG_MAJOR:-17}
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+    environment:
+      POSTGRES_PASSWORD: pgdba
+      POSTGRES_DB: pgdba
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55434:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - ../testdata/seed:/docker-entrypoint-initdb.d:ro
+    networks: [bench]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "pgdba"]
+      interval: 1s
+      timeout: 3s
+      retries: 5
+      start_period: 120s
+
+  # The harness itself, for running it without installing Go:
+  #   docker compose -f bench/compose.yml run --rm bench all
+  # Run it from the repository root: the repository is mounted at the very path it has on the host (${PWD}), because
+  # the harness drives the host's Docker (compose, docker run, docker stats) and the daemon resolves every bind mount
+  # it is given as a host path. Host networking for the same reason: the harness reaches the databases through the
+  # ports published on 127.0.0.1 (on Docker Desktop, enable host networking).
+  # Mounting the Docker socket gives this container root-equivalent access to the host.
+  bench:
+    image: golang:1.26-alpine
+    # Behind a profile, so the `compose up` the harness itself runs does not start a second harness.
+    profiles: [bench]
+    working_dir: ${PWD:?run from the repository root}/bench
+    # golang:1.26-alpine has no docker CLI, and the harness shells out to docker and docker compose.
+    entrypoint: ["sh", "-c", "apk add --no-cache docker-cli docker-cli-compose >/dev/null && exec go run ./cmd/bench \"$@\"", "--"]
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # No git in the image, and the checkout is not this container's: VCS stamping could only fail.
+      GOFLAGS: -buildvcs=false
+    volumes:
+      - ${PWD:?run from the repository root}:${PWD}
+      - /var/run/docker.sock:/var/run/docker.sock
+      - pgmcp-gocache:/root/.cache/go-build
+      - pgmcp-gomod:/go/pkg/mod
+    network_mode: host
+
+volumes:
+  pgdata:
+  # The caches the linux build already uses (internal/servers), under their own names, not the project's.
+  pgmcp-gocache:
+    name: pgmcp-gocache
+  pgmcp-gomod:
+    name: pgmcp-gomod
+
+networks:
+  bench:

@@ -38,7 +38,7 @@ Against crystaldba/postgres-mcp 0.3.0 on the same PostgreSQL 17 database and the
 
 The other side: the nine tool definitions are 25 % larger (2459 tokens against 1965), and the tokens of a whole agent task are comparable.
 
-Method, every number (including where postgres-dba-mcp does worse) and charts: [BENCHMARK.md](BENCHMARK.md). The bench harness is not published. Its inputs are, so the measures can be redone with any client: the data set in [bench/data](bench/data), the attack and legitimate corpora in [testdata/safesql](testdata/safesql), and the scenarios and tasks listed in BENCHMARK.md.
+Method, every number (including where postgres-dba-mcp does worse) and charts: [BENCHMARK.md](BENCHMARK.md). The harness that produced them is in [bench](bench), with its inputs: the data set in [bench/data](bench/data), the attack and legitimate corpora in [testdata/safesql](testdata/safesql), and the scenarios and tasks listed in BENCHMARK.md. `cd bench && go run ./cmd/bench all` redoes the security, memory, cold start and scenario measures with no model account; exact token counts take `--tokens=claude` or an `ANTHROPIC_API_KEY`, and the agent tasks and their judge need the `claude` CLI. Prerequisites and what each level needs: [bench/README.md](bench/README.md).
 
 ## What the model receives
 
