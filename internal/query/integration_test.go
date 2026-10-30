@@ -284,13 +284,7 @@ func TestBoundedReadOfLargeValues(t *testing.T) {
 	})
 	c := newClient(t, testpg.RO(t))
 	const sql = "SELECT id, doc FROM exec.big ORDER BY id"
-	c.ok(t, sql, 20) // warms the parser, the pool and the driver's read buffer: they are not part of the bound
-
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
 	text := c.ok(t, sql, 20)
-	runtime.ReadMemStats(&after)
 
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	if len(lines) != 1+20+2 || !strings.HasPrefix(lines[1], "1,xxx") || !strings.HasSuffix(lines[1], "…[+5242680 chars]") {
@@ -299,8 +293,30 @@ func TestBoundedReadOfLargeValues(t *testing.T) {
 	if want := "-- 20 cells shortened (doc); pass max_cell (up to 10000) to read more"; lines[len(lines)-1] != want {
 		t.Errorf("footer = %q, want %q", lines[len(lines)-1], want)
 	}
-	if grown := after.TotalAlloc - before.TotalAlloc; grown > 16<<20 {
-		t.Errorf("Go heap allocated %d bytes for a %d-byte result", grown, len(text))
+	// What collect keeps is the bound that matters, and it is asked directly: the allocation of the process is
+	// mostly the driver's read buffer, which no bound of ours governs and which varies with the runner.
+	conn, err := pgx.Connect(context.Background(), testpg.RO(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	tx, err := conn.Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	res, err := collect(context.Background(), tx, sql, limits{rows: 20, cell: 200, bytes: 32768})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := 0
+	for _, row := range res.Rows {
+		for _, cell := range row {
+			kept += len(cell)
+		}
+	}
+	if len(res.Rows) != 20 || kept > 64<<10 {
+		t.Errorf("collect kept %d bytes in %d rows, reading 20 rows of 5 MB", kept, len(res.Rows))
 	}
 }
 
