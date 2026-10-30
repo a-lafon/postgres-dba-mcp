@@ -68,6 +68,10 @@ jobs:
       # Last: the image it points at must already be on GHCR for the registry to verify ownership.
       - name: Publish to the MCP Registry
         run: |
-          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.6/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          # A release asset can be replaced the way a tag can be moved, and this job holds the tokens, so the
+          # archive is pinned by checksum as install.sh pins ours.
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.6/mcp-publisher_linux_amd64.tar.gz" -o mcp-publisher.tar.gz
+          echo "1fbe93fc0783c2394d8012c8d6e50a59e98cb2cc2d216264cc69f405d0e21340  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
