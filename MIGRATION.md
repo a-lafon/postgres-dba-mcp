@@ -125,3 +125,9 @@ These flags did not exist in 0.3.0: `--tools`, `--max-rows`, `--max-rows-limit`,
 | Candidates drop the schema name, resolve an unqualified column to the first table, and miss `JOIN` conditions that are nested. | Columns are resolved against the catalog (schema kept, ambiguous columns dropped), and join conditions are read at every nesting depth. Column order inside a candidate is deterministic. | None. |
 | Sizes of recommended indexes are estimated, then discarded. Results vary between runs, and the time budget is checked loosely. | The hypopg size is used for the size budget and shown. For identical inputs the output is identical. The 30 s budget is checked before every EXPLAIN, and the output says when it was hit. A query whose EXPLAIN fails is skipped and reported instead of stopping the analysis. | None. |
 | More than 10 queries or an empty list return `Error: ...` as a normal result. | Same messages with `ERROR: ` and `isError`. | None. |
+
+## analyze_locks
+
+| crystaldba 0.3.0 | postgres-dba-mcp | What to do |
+|---|---|---|
+| No equivalent: nothing reads `pg_locks`. | `analyze_locks` (group `locks`) is an addition, not a renamed tool: it reports the lock waits in progress, one row per blocked session and direct blocker, with the root of each chain. It takes no parameter, only reads, and answers `-- no lock wait in progress` when nothing is waiting. | Nothing. Drop `locks` from `--tools` to keep the 0.3.0 tool set exactly. |

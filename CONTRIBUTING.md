@@ -64,6 +64,7 @@ One line per package under `cmd/` and `internal/`. `cmd/postgres-dba-mcp/docs_te
 | `internal/httpx` | The HTTP transports (streamable HTTP and SSE) behind the Host and Origin guard. |
 | `internal/hypo` | Hypothetical indexes through hypopg, EXPLAIN with generic plans, plan parsing and index size estimates, shared by `explain` and `indexadv`. |
 | `internal/indexadv` | The `analyze_query_indexes` and `analyze_workload_indexes` tools: workload intake, candidate indexes, greedy search on hypothetical-index costs, rendering. |
+| `internal/locks` | The `analyze_locks` tool: one snapshot of the lock waits in progress, with the root of each blocking chain resolved in Go. |
 | `internal/query` | The `execute_sql` tool: one statement per call, checked in restricted mode and passed through the volatility gate, read through a server-side cursor. |
 | `internal/safesql` | The SQL check behind restricted mode: parse, statement kinds, function denylist and policy, classification. It needs no database, except `Gate`, which resolves the undecided function calls against `pg_proc`. |
 | `internal/schema` | The schema tools `list_schemas`, `list_objects` and `get_object_details`. |

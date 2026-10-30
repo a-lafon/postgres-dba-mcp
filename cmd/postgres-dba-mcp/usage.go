@@ -9,7 +9,7 @@ Flags can come before or after the URI, as --name=value or --name value.
 Flags:
   --access-mode        restricted | unrestricted (default restricted)
   --transport          stdio | streamable-http | sse (default stdio)
-  --tools              comma list of schema, query, explain, stats, health, index, or all (default all)
+  --tools              comma list of schema, query, explain, stats, health, index, locks, or all (default all)
   --max-rows           default row limit of a result, at least 1 (default 100)
   --max-rows-limit     highest max_rows a client may ask for (default 1000)
   --max-bytes          size cap of one tool result in bytes, at least 1024 (default 32768)

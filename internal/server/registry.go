@@ -36,7 +36,7 @@ func logLine(line string) {
 
 // Tool is one MCP tool, registered with Registry.Add.
 type Tool struct {
-	Group   string    // schema|query|explain|stats|health|index
+	Group   string    // schema|query|explain|stats|health|index|locks
 	Def     *mcp.Tool // Name, Description, InputSchema; Annotations are set by Add
 	Title   string    // required; the annotation title
 	Writes  bool      // true only for execute_sql in unrestricted mode
