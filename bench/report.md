@@ -1,6 +1,13 @@
 # postgres-dba-mcp vs crystaldba/postgres-mcp 0.3.0 — bench report
 
-Run rc2 · postgres-dba-mcp dev (c933662) · crystaldba sha256:dbbd3468… · PostgreSQL 17.11 · scale 1 · tokens: claude -p (claude-opus-5-5)
+Run rc2 · 2026-10-22 · postgres-dba-mcp dev (c933662) · crystaldba sha256:dbbd3468… · PostgreSQL 17.11 · scale 1 · tokens: claude -p (claude-opus-5-5)
+
+**This file is the raw output of one run, kept as it was produced. [BENCHMARK.md](../BENCHMARK.md) is the page to read**: it reports the same measures, plus what this run predates.
+
+- **Commit.** `c933662` is a commit of the development repository, which was squashed into `Initial release` when this repository was opened. No public revision matches it.
+- **Security: 124 cases here, 131 in BENCHMARK.md.** Seven cases (`ts_rewrite`, index maintenance and planner statistics writes) were added after this run and never sent to crystaldba. postgres-dba-mcp refuses all 131 on every push: the corpus is replayed end to end by `TestAttackCorpusLeavesNoSideEffect` and `TestCorpora`.
+- **Judge, T13.** BENCHMARK.md replaces the T13 row with three later runs on `daf8c3a`, once the index advisor stopped leaving out an index: 0 / 2 / 1 there against 0 / 0 / 3 here, so `all` reads 5 / 19 / 3 instead of 5 / 17 / 5.
+- **N1: 9 tools here, 10 since.** `analyze_locks` was added after this run and is not counted below.
 
 ## Verdict: GO
 
