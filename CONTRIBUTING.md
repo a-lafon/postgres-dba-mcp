@@ -25,9 +25,14 @@ go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...   # known vulnerabilities 
 go test -race ./...                        # unit tests, no Docker
 go test -race -tags integration -p 1 ./...  # integration tests against the fixture, one package at a time
 docker compose down -v                     # stop the fixture
+go test -parallel 4 -run '^FuzzSafeSQL$' -fuzz '^FuzzSafeSQL$' -fuzztime 40m ./internal/safesql   # see below
 ```
 
 CI runs the same commands; `go.mod` pins the Go toolchain, so a stdlib fix means bumping its `toolchain` line. Integration tests read the connection strings of the fixture from `internal/testpg`; they fail, not skip, when the fixture is down.
+
+## Fuzzing
+
+`internal/safesql` and `internal/format` hold fuzz targets for the code that reads text nobody here wrote: the statements `pg_stat_statements` returns, and the values the server sends back. CI does not fuzz; a plain `go test` replays their seeds, which for `FuzzSafeSQL` are both corpora of `testdata/safesql`. Run a target with `-fuzz` by hand after touching the rewrite, the policy check, the reference walkers or the renderer. `-parallel` caps the workers, which default to one per core: each `FuzzSafeSQL` worker holds its own WASM parser, so the default saturates the machine and the target runs at a few hundred executions per second either way. An input that fails is written to the package's `testdata/fuzz`; commit it, and `go test` replays it from then on.
 
 ## Benchmark
 
