@@ -35,6 +35,8 @@ postgres-dba-mcp against [crystaldba/postgres-mcp](https://github.com/crystaldba
 
 The agent tasks and the judge were not run again. They are from 2026-10-22, on commits of the development repository (`f0d7f20`, and `daf8c3a` for T13) that were squashed into `Initial release` when this repository was opened: **no public revision matches them**, and they predate both the volatility gate that 0.2.0 adds to restricted mode and the `analyze_locks` tool. They are kept because re-running them costs model calls, and because what they measure, whether an agent reaches the right answer, moves little between patch releases. Read them as dated, not as current.
 
+**Where a model is involved at all.** Most of this page is measured without one: response sizes are bytes, restricted mode is a parser and a snapshot of the database taken after every statement, memory and cold start are `docker stats` and a clock. A model appears in exactly two places. It counts tokens, which is a tokeniser and not a judgment, and the byte column above says what the ratio becomes without it. And it runs the agent tasks and their judge, which are informational, which never enter the verdict, and which a reader who distrusts them can ignore without touching any other number on this page. `go run ./cmd/bench all` without `--tokens=claude` needs no account of any kind.
+
 ## Data
 
 Generated with a fixed random seed, then `ANALYZE`.
@@ -111,6 +113,7 @@ Each scenario calls one tool with fixed arguments, 5 times per server. A call th
 | S21 | explain_query | S12 again after S13 | 113 | 61 | +85 % | yes / yes |
 
 - **Headline ratio.** Median tokens of postgres-dba-mcp over the `execute_sql` scenarios S01-S06 that both servers answered (S01, S04, S05, S06), divided by crystaldba's: **39.2 %**.
+- **The same ratio with no model at all: 36.6 %.** Computed on the raw bytes of those same four responses (2324 / 4613 / 143 / 147 against 6275 / 400731 / 479 / 345), where no tokeniser takes part. It is lower than the token ratio, so counting with Claude's tokeniser is the more conservative of the two measures, not the flattering one. `go run ./cmd/bench all` without `--tokens=claude` reproduces the byte column with no account.
 - **Larger responses.** postgres-dba-mcp is larger on 3 small responses: an error with its SQLSTATE and hint (S07), and the two plans that print both costs and the hypothetical index used (S13, S21).
 - **Largest response.** 8442 bytes, under the 32768-byte cap. All 3 cut results say so in their footer.
 - **Health traps (S17).** postgres-dba-mcp names all six traps. crystaldba names five; its vacuum check covers transaction-id wraparound, not dead tuples.
