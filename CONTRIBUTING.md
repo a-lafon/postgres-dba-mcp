@@ -29,6 +29,23 @@ docker compose down -v                     # stop the fixture
 
 CI runs the same commands; `go.mod` pins the Go toolchain, so a stdlib fix means bumping its `toolchain` line. Integration tests read the connection strings of the fixture from `internal/testpg`; they fail, not skip, when the fixture is down.
 
+## Benchmark
+
+`bench/` is the harness behind `BENCHMARK.md`: a separate Go module, so its dependencies never reach the server's. CI vets and unit-tests it like the server; the levels below need Docker and are run by hand.
+
+```sh
+cd bench
+go run ./cmd/bench all                   # the 21 scenarios, the attack corpus, memory and cold start, no model account
+go run ./cmd/bench all --tokens=claude   # the same with exact token counts, through the claude CLI, for a few USD
+```
+
+`bench/README.md` says what each level measures and which ones need a model. Two things to know before running it:
+
+- **A run writes to `bench/results/<run-id>/`, which `.gitignore` covers on purpose.** Those files carry the working directory, session identifiers and the slash commands of the account that produced them. Never force them into a commit.
+- **`bench report` overwrites the tracked `bench/report.md`.** Commit it only together with the `BENCHMARK.md` numbers it belongs to, and keep its header saying which run it is and what that run predates.
+
+A number in `README.md` or `BENCHMARK.md` is the output of a run on a commit of this repository. Changing what a tool prints makes the scenario numbers stale; say so in the pull request rather than leaving them to be found.
+
 ## Adding a tool
 
 1. Create a package under `internal/` with a `// Package <name> ...` comment. One package per tool or per family of tools.

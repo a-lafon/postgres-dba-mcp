@@ -74,7 +74,8 @@ services:
     profiles: [bench]
     working_dir: ${PWD:?run from the repository root}/bench
     # golang:1.26-alpine has no docker CLI, and the harness shells out to docker and docker compose.
-    entrypoint: ["sh", "-c", "apk add --no-cache docker-cli docker-cli-compose >/dev/null && exec go run ./cmd/bench \"$@\"", "--"]
+    # The first test catches the usual mistake: run from bench/, ${PWD}/bench is <repo>/bench/bench, which holds nothing.
+    entrypoint: ["sh", "-c", "[ -f compose.yml ] || { echo \"bench: run this from the repository root, not from bench/: docker compose -f bench/compose.yml run --rm bench <command>\" >&2; exit 2; }; apk add --no-cache docker-cli docker-cli-compose >/dev/null && exec go run ./cmd/bench \"$@\"", "--"]
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # No git in the image, and the checkout is not this container's: VCS stamping could only fail.
