@@ -41,6 +41,35 @@ func TestTruncated(t *testing.T) {
 	}
 }
 
+// A server that answers with an error has not answered the scenario. crystaldba 0.3.0 does this on S03, where its own
+// 30 s limit returns an error text in a few milliseconds: graded as an answer, those 44 tokens enter the median and
+// turn the token ratio of S01-S06 upside down, and a scenario that declares no fact even grades them correct.
+func TestGradeCellRejectsAnErrorAnswer(t *testing.T) {
+	tests := []struct {
+		name       string
+		server     string
+		id         string
+		text       string
+		isError    bool
+		wantStatus string
+		correct    bool
+	}{
+		{"crystal timeout", results.Crystal, "S03", "Error: Query execution timed out after 30 seconds in restricted mode.", false, results.StatusError, false},
+		{"crystal answer", results.Crystal, "S03", "id,kind\n1,click\n", false, results.StatusOK, true},
+		{"dba statement timeout", results.DBA, "S03", "ERROR: canceling statement due to statement timeout (SQLSTATE 57014)", true, results.StatusError, false},
+		{"S07 is the scenario whose answer is an error", results.Crystal, "S07", `Error: column "nme" does not exist`, false, results.StatusOK, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cell := results.N2Cell{Correct: true, Truncation: results.TruncNone}
+			gradeCell(&cell, tt.server, Scenario{ID: tt.id}, factCall(nil, nil), tt.text, tt.isError)
+			if cell.Status != tt.wantStatus || cell.Correct != tt.correct {
+				t.Errorf("got status %q correct %v, want %q %v", cell.Status, cell.Correct, tt.wantStatus, tt.correct)
+			}
+		})
+	}
+}
+
 func TestGradeCell(t *testing.T) {
 	types := []Fact{Str("hello"), Empty(), Num("532.10"), IntArray([]int32{1, 2}), Interval("1 day 02:00:00", 1, 0), Bytea([]byte{0xde, 0xad, 0xbe, 0xef}), Null()}
 	tests := []struct {

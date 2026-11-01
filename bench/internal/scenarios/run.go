@@ -144,8 +144,16 @@ func gradeCell(cell *results.N2Cell, name string, s Scenario, c Call, text strin
 	out := c.Check(name, text)
 	cell.Missing, cell.Detected, cell.Advice = out.Missing, out.Detected, out.Advice
 	cell.Correct = len(out.Missing) == 0
-	if class := servers.Classify(name, isError, text); class == results.ClassRefused && s.ID != "S07" {
-		cell.FalseRefusal, cell.Correct = true, false
+	// S07 is the one scenario whose expected answer is an error. Everywhere else a server that answers with an error
+	// did not answer the question: counting the tokens of its error message as a response would reward failing fast,
+	// and a scenario that declares no fact would even grade it correct.
+	if class := servers.Classify(name, isError, text); s.ID != "S07" {
+		switch class {
+		case results.ClassRefused:
+			cell.FalseRefusal, cell.Correct = true, false
+		case results.ClassFailed:
+			cell.Status, cell.Correct, cell.Note = results.StatusError, false, firstLine(text)
+		}
 	}
 	if name == results.Crystal {
 		return
@@ -219,6 +227,15 @@ func (r *Runner) keep(server, id, text string) error {
 		return fmt.Errorf("keep raw output of %s on %s: %w", id, server, err)
 	}
 	return nil
+}
+
+// firstLine returns the first line of text, cut to what a report cell can show.
+func firstLine(text string) string {
+	line, _, _ := strings.Cut(text, "\n")
+	if len(line) > 120 {
+		line = line[:120] + "…"
+	}
+	return line
 }
 
 func failCell(cell results.N2Cell, err error) results.N2Cell {

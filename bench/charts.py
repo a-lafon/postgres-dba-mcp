@@ -109,8 +109,10 @@ def security(run, out):
             parts.append(f"{effects} with a side effect")
             ax.text(len(cases) + 3, row, ", ".join(parts), va="center", fontsize=8.5, color=t["fg"], clip_on=False)
         ax.set_yticks([0, 1], ["crystaldba 0.3.0", "postgres-dba-mcp"], fontsize=9)
-        ax.set_xlim(0, 124)
-        ax.set_xlabel("124 attack statements in restricted mode")
+        # From the run: the corpus grows, and a hardcoded count would clip the bars and mislabel the axis.
+        total = max(len(s["dba"]), len(s["crystal"]))
+        ax.set_xlim(0, total)
+        ax.set_xlabel(f"{total} attack statements in restricted mode")
         save(fig, out, "security", theme)
 
 

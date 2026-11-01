@@ -1,6 +1,7 @@
 package servers
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,6 +15,23 @@ func TestLinuxBuildArgs(t *testing.T) {
 		"CGO_ENABLED=1", "/repo:/src:ro", "/out:/out", "pgmcp-gocache:", "pgmcp-gomod:", "golang:1.26-alpine",
 		"-trimpath", "-tags pgquery_cgo,netgo,osusergo", "-s -w", "-linkmode=external", `-extldflags "-static -s"`, "apk add --no-cache gcc musl-dev",
 	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("build args lack %q: %s", want, joined)
+		}
+	}
+}
+
+// The root Dockerfile is goreleaser's: it reads the binary under $TARGETPLATFORM. BuildKit sets that variable and the
+// legacy builder leaves it empty, so the bench passes it and puts the binary where it points, or the build fails on
+// one builder and silently reads another folder on the other.
+func TestImageBuildTargetsThePlatformFolder(t *testing.T) {
+	const plat = "linux/amd64"
+	if got, want := imageBinDir("/ctx", plat), filepath.Join("/ctx", "linux", "amd64"); got != want {
+		t.Errorf("binary folder = %q, want %q", got, want)
+	}
+	args := imageBuildArgs("/repo", "/ctx", plat)
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"--build-arg TARGETPLATFORM=" + plat, "-t " + ImageTag, filepath.Join("/repo", "Dockerfile"), "/ctx"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("build args lack %q: %s", want, joined)
 		}

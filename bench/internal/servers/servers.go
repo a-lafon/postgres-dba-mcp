@@ -169,6 +169,30 @@ const (
 // ImageDir returns the Docker build context of the image: a folder under bin/ that holds the binary only.
 func ImageDir(benchDir string) string { return filepath.Join(benchDir, "bin", "image") }
 
+// imageBinDir returns the folder of the build context that holds the binary. The root Dockerfile is goreleaser's, and
+// reads it through $TARGETPLATFORM, so the context needs one folder per platform even when it holds a single binary.
+func imageBinDir(ctxDir, plat string) string { return filepath.Join(ctxDir, filepath.FromSlash(plat)) }
+
+// imageBuildArgs returns the `docker build` arguments of the image. TARGETPLATFORM is passed explicitly: BuildKit fills
+// it on its own, the legacy builder leaves it empty, and the two then read different folders of the same context.
+func imageBuildArgs(repoDir, ctxDir, plat string) []string {
+	return []string{"build", "-q", "-t", ImageTag, "--build-arg", "TARGETPLATFORM=" + plat,
+		"-f", filepath.Join(repoDir, "Dockerfile"), ctxDir}
+}
+
+// daemonPlatform returns the "<os>/<arch>" of the Docker daemon, which is the platform the binary is built for.
+func daemonPlatform(ctx context.Context) (string, error) {
+	out, err := exec.CommandContext(ctx, "docker", "version", "-f", "{{.Server.Os}}/{{.Server.Arch}}").Output()
+	if err != nil {
+		return "", fmt.Errorf("read the docker daemon platform: %w", err)
+	}
+	plat := strings.TrimSpace(string(out))
+	if os, arch, ok := strings.Cut(plat, "/"); !ok || os == "" || arch == "" {
+		return "", fmt.Errorf("docker daemon platform is %q, want <os>/<arch>", plat)
+	}
+	return plat, nil
+}
+
 // linuxBuildArgs returns the `docker run` arguments that build the static musl cgo binary of repoDir into outDir, the
 // way .goreleaser.yaml builds the linux binaries (Alpine's musl gcc instead of zig cc). -buildvcs=false because the
 // .git of a git worktree points outside the mounted folder.
@@ -190,10 +214,15 @@ func BuildLinux(ctx context.Context, repoDir, benchDir string) error {
 	if err != nil {
 		return fmt.Errorf("resolve repository folder: %w", err)
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	plat, err := daemonPlatform(ctx)
+	if err != nil {
+		return err
+	}
+	binDir := imageBinDir(dir, plat)
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		return fmt.Errorf("create image folder: %w", err)
 	}
-	if out, err := exec.CommandContext(ctx, "docker", linuxBuildArgs(repo, dir)...).CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(ctx, "docker", linuxBuildArgs(repo, binDir)...).CombinedOutput(); err != nil {
 		return fmt.Errorf("build linux binary: %w: %s", err, out)
 	}
 	// The Dockerfile also copies these, as goreleaser's extra_files do.
@@ -206,7 +235,7 @@ func BuildLinux(ctx context.Context, repoDir, benchDir string) error {
 			return fmt.Errorf("copy %s: %w", name, err)
 		}
 	}
-	cmd := exec.CommandContext(ctx, "docker", "build", "-q", "-t", ImageTag, "-f", filepath.Join(repoDir, "Dockerfile"), dir)
+	cmd := exec.CommandContext(ctx, "docker", imageBuildArgs(repoDir, dir, plat)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("build image %s: %w: %s", ImageTag, err, out)
 	}
