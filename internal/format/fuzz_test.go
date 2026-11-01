@@ -40,10 +40,12 @@ func FuzzRender(f *testing.F) {
 // holds the whole value. Both walk code points over byte offsets, so a value that is not valid UTF-8 or that
 // ends inside a rune has to come out the same on either side.
 func FuzzCut(f *testing.F) {
-	f.Add("hello", 3)
-	f.Add(strings.Repeat("é", 100), 10)
-	f.Add("\xff\xfe"+strings.Repeat("a", 50), 1)
-	f.Add(strings.Repeat("😀", 40), 0)
+	// One seed per encoding width, because Cut copies 4*max bytes to hold max code points: at four bytes a rune
+	// that bound is exact, and anything narrower leaves slack that hides an error in it.
+	f.Add("hello", 3)                            // one byte
+	f.Add(strings.Repeat("é", 100), 10)          // two
+	f.Add("\xff\xfe"+strings.Repeat("a", 50), 1) // not UTF-8 at all
+	f.Add(strings.Repeat("\U0001F600", 40), 0)   // four, with the degenerate max
 	f.Fuzz(func(t *testing.T, s string, max int) {
 		if max < 0 || max > 1<<16 {
 			t.Skip()
