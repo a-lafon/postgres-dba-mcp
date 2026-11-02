@@ -1,4 +1,6 @@
 bench/bin/
+# Recorded runs: megabytes of transcripts carrying the cwd, session identifiers and the slash commands of whoever ran them.
+bench/results/
 dist/
 .env
 .claude/

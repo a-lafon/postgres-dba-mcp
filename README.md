@@ -29,16 +29,16 @@ What the model receives changes:
 
 ## Measured
 
-Against crystaldba/postgres-mcp 0.3.0 on the same PostgreSQL 17 database and the same read-only role:
+Against crystaldba/postgres-mcp 0.3.0 on the same PostgreSQL 17 database and the same read-only role, measured on [`959bb72`](https://github.com/a-lafon/postgres-dba-mcp/commit/959bb72) on 2026-11-01, except the agent tasks:
 
 - **61 % fewer** tokens per `execute_sql` response: median of the 4 scenarios both servers answered (S01, S04, S05, S06). Every result is capped at 32 kB, where crystaldba returns up to 268k tokens or fails;
 - **131 of 131** attack statements refused in restricted mode, where crystaldba executes 10;
-- **16 MB** of memory against 248 MB, both in a Linux container; cold start of **11 ms** for the binary run directly, against 1.4 s for crystaldba including `docker run`;
-- **27 of 27** agent tasks solved with Claude Code, against 25 of 27, measured on 0.1.0, before the volatility gate.
+- **9 MB** of memory against 246 MB, both in a Linux container; cold start of **13 ms** for the binary run directly, against 2.3 s for crystaldba including `docker run`;
+- **27 of 27** agent tasks solved with Claude Code, against 25 of 27 — the one dated measure here: 2026-10-22, on 0.1.0, before the volatility gate and before `analyze_locks`.
 
-The other side: the nine definitions of the tools crystaldba also has are 25 % larger (2459 tokens against 1965), and the tokens of a whole agent task are comparable. `analyze_locks`, which crystaldba has no equivalent of, adds about 160 tokens on top; drop `locks` from `--tools` to get the 0.3.0 tool set exactly.
+The other side: the tool definitions are 39 % larger (2732 tokens for ten tools against 1962 for crystaldba's nine), and the tokens of a whole agent task are comparable. Drop `locks` from `--tools` to get the 0.3.0 tool set exactly.
 
-Method, every number (including where postgres-dba-mcp does worse) and charts: [BENCHMARK.md](BENCHMARK.md). The bench harness is not published. Its inputs are, so the measures can be redone with any client: the data set in [bench/data](bench/data), the attack and legitimate corpora in [testdata/safesql](testdata/safesql), and the scenarios and tasks listed in BENCHMARK.md.
+Method, every number (including where postgres-dba-mcp does worse) and charts: [BENCHMARK.md](BENCHMARK.md). The harness that produced them is in [bench](bench), with its inputs: the data set in [bench/data](bench/data), the attack and legitimate corpora in [testdata/safesql](testdata/safesql), and the scenarios and tasks listed in BENCHMARK.md. `cd bench && go run ./cmd/bench all` redoes the security, memory, cold start and scenario measures with no model account; exact token counts take `--tokens=claude` or an `ANTHROPIC_API_KEY`, and the agent tasks and their judge need the `claude` CLI. Prerequisites and what each level needs: [bench/README.md](bench/README.md).
 
 ## What the model receives
 
