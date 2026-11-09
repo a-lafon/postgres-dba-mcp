@@ -1,6 +1,6 @@
 # postgres-dba-mcp vs crystaldba/postgres-mcp 0.3.0 — bench report
 
-Run 20261108T212249Z · postgres-dba-mcp dev (dcb2edb) · crystaldba sha256:dbbd3468… · PostgreSQL 17.11 · scale 1 · tokens: estimate
+Run 20261108T222200Z · postgres-dba-mcp dev (7afada9) · crystaldba sha256:dbbd3468… · PostgreSQL 17.11 · scale 1 · tokens: estimate
 
 ## Verdict: INCONCLUSIVE
 
@@ -26,28 +26,28 @@ Unverified: N2 median tokens S01-S06; N3 median total tokens; N3 median turns; N
 
 | ID | Tool | Tokens dba | Tokens crystal | Δ | Bytes dba | p50 / p95 ms dba | Correct dba / crystal | Truncation dba |
 |---|---|---|---|---|---|---|---|---|
-| S01 | execute_sql | 581 | 1569 | -63.0% | 2324 | 2 / 900 | yes / yes | none |
-| S02 | execute_sql | 2111 | failed (oversized) | n/a | 8443 | 2 / 5 | yes / no | signalled |
-| S03 | execute_sql | 1969 | failed (oversized) | n/a | 7874 | 2 / 3 | yes / no | signalled |
+| S01 | execute_sql | 581 | 1569 | -63.0% | 2324 | 1 / 919 | yes / yes | none |
+| S02 | execute_sql | 2111 | failed (oversized) | n/a | 8443 | 2 / 3 | yes / no | signalled |
+| S03 | execute_sql | 1969 | failed (oversized) | n/a | 7874 | 2 / 2 | yes / no | signalled |
 | S04 | execute_sql | 1154 | 100183 | -98.8% | 4613 | 2 / 3 | yes / yes | signalled |
-| S05 | execute_sql | 36 | 120 | -70.0% | 143 | 10 / 16 | yes / yes | none |
+| S05 | execute_sql | 36 | 120 | -70.0% | 143 | 9 / 14 | yes / yes | none |
 | S06 | execute_sql | 37 | 87 | -57.5% | 147 | 1 / 1 | yes / yes | none |
 | S07 | execute_sql | 28 | 29 | -3.4% | 109 | 1 / 1 | yes / yes | none |
-| S08 | list_schemas | 41 | 93 | -55.9% | 162 | 1 / 2 | yes / yes | none |
-| S09 | list_objects | 156 | 1336 | -88.3% | 625 | 4 / 14 | yes / yes | none |
-| S10 | get_object_details | 246 | 323 | -23.8% | 982 | 5 / 8 | yes / no | none |
+| S08 | list_schemas | 41 | 93 | -55.9% | 162 | 1 / 1 | yes / yes | none |
+| S09 | list_objects | 156 | 1336 | -88.3% | 624 | 4 / 7 | yes / yes | none |
+| S10 | get_object_details | 246 | 323 | -23.8% | 982 | 4 / 5 | yes / no | none |
 | S11 | get_object_details | 220 | 1259 | -82.5% | 877 | 4 / 4 | yes / yes | none |
 | S12 | explain_query | 63 | 63 | 0.0% | 250 | 1 / 2 | yes / yes | none |
-| S13 | explain_query | 84 | 25 | +236.0% | 336 | 2 / 3 | yes / yes | none |
-| S14 | explain_query | 57 | failed (error) | n/a | 228 | 23 / 31 | yes / no | none |
-| S15 | get_top_queries | 438 | 1855 | -76.4% | 1752 | 5 / 10 | yes / yes | signalled |
-| S16 | get_top_queries | 570 | 2629 | -78.3% | 2277 | 2 / 2 | yes / yes | signalled |
-| S17 | analyze_db_health | 359 | 1400 | -74.4% | 1433 | 23 / 53 | yes / yes | none |
-| S18 | analyze_db_health | 250 | 1226 | -79.6% | 997 | 15 / 16 | yes / yes | none |
-| S19 | analyze_query_indexes | 53 | 1991 | -97.3% | 211 | 24 / 33 | yes / no | none |
-| S20 | analyze_query_indexes | 35 | 250 | -86.0% | 138 | 5 / 10 | yes / yes | none |
-| S21 | explain_query | 63 | 25 | +152.0% | 250 | 1 / 1 | yes / yes | none |
-| S22 | execute_sql | 1275 | 49065 | -97.4% | 5099 | 2 / 5 | yes / yes | signalled |
+| S13 | explain_query | 84 | 25 | +236.0% | 336 | 2 / 2 | yes / yes | none |
+| S14 | explain_query | 57 | failed (error) | n/a | 228 | 25 / 31 | yes / no | none |
+| S15 | get_top_queries | 314 | 509 | -38.3% | 1256 | 5 / 5 | yes / yes | signalled |
+| S16 | get_top_queries | 530 | 2635 | -79.9% | 2117 | 3 / 3 | yes / yes | signalled |
+| S17 | analyze_db_health | 359 | 1400 | -74.4% | 1433 | 24 / 32 | yes / yes | none |
+| S18 | analyze_db_health | 250 | 1226 | -79.6% | 997 | 17 / 18 | yes / yes | none |
+| S19 | analyze_query_indexes | 53 | 1991 | -97.3% | 211 | 24 / 27 | yes / no | none |
+| S20 | analyze_query_indexes | 35 | 250 | -86.0% | 138 | 4 / 5 | yes / yes | none |
+| S21 | explain_query | 62 | 25 | +148.0% | 248 | 1 / 2 | yes / yes | none |
+| S22 | execute_sql | 772 | 49065 | -98.4% | 3088 | 2 / 2 | yes / yes | signalled |
 
 Trap detection: S17 (`all`) must find T1-T6 and S18 (`index`) T1 and T2. The last column counts only the traps crystaldba can detect (T1, T2, T4, T5, T6: its vacuum check covers wraparound, not dead tuples); the target compares that column.
 
@@ -80,7 +80,7 @@ crystaldba on the function-in-FROM cases (`fn-*-from`, CVE-2026-85620), a report
 |---|---|---|
 | fn-lo-from | failed at execution | none |
 | fn-settings-from | executed | none |
-| fn-advisory-from | executed | advisory locks +6201/0/1/ExclusiveLock |
+| fn-advisory-from | executed | advisory locks +2331/0/1/ExclusiveLock |
 | fn-notify-from | executed | none |
 | fn-sessions-from | executed | none |
 | fn-files-from | failed at execution | none |
@@ -99,7 +99,7 @@ Every case that executed or had a side effect:
 | crystal | multi-two-selects | executed | none |
 | crystal | fn-settings-from | executed | none |
 | crystal | fn-settings-lateral | executed | none |
-| crystal | fn-advisory-from | executed | advisory locks +6201/0/1/ExclusiveLock |
+| crystal | fn-advisory-from | executed | advisory locks +2331/0/1/ExclusiveLock |
 | crystal | fn-notify-from | executed | none |
 | crystal | fn-sessions-from | executed | none |
 | crystal | evasion-prepare-select | executed | none |
@@ -107,7 +107,7 @@ Every case that executed or had a side effect:
 | crystal | evasion-declare-cursor | executed | none |
 | crystal | evasion-empty | executed | none |
 | dbhub | multi-two-selects | executed | none |
-| dbhub | fn-advisory-from | executed | advisory locks +1500/0/1/ExclusiveLock |
+| dbhub | fn-advisory-from | executed | advisory locks +1090/0/1/ExclusiveLock |
 | dbhub | fn-advisory-sub | executed | advisory locks +105/0/1/ExclusiveLock |
 | dbhub | fn-advisory-arg | executed | advisory locks +105/0/1/ExclusiveLock |
 | dbhub | fn-notify-from | executed | notifications received: chan:payload |
@@ -118,7 +118,7 @@ Every case that executed or had a side effect:
 | dbhub | fn-dynsql-lateral | executed | none |
 | dbhub | evasion-quoted-schema-fn | executed | none |
 | dbhub-4tools | multi-two-selects | executed | none |
-| dbhub-4tools | fn-advisory-from | executed | advisory locks +657/0/1/ExclusiveLock |
+| dbhub-4tools | fn-advisory-from | executed | advisory locks +656/0/1/ExclusiveLock |
 | dbhub-4tools | fn-advisory-sub | executed | advisory locks +105/0/1/ExclusiveLock |
 | dbhub-4tools | fn-advisory-arg | executed | advisory locks +105/0/1/ExclusiveLock |
 | dbhub-4tools | fn-notify-from | executed | notifications received: chan:payload |
@@ -129,9 +129,9 @@ Every case that executed or had a side effect:
 | dbhub-4tools | fn-dynsql-lateral | executed | none |
 | dbhub-4tools | evasion-quoted-schema-fn | executed | none |
 | dbhub-rows100 | multi-two-selects | executed | none |
-| dbhub-rows100 | fn-advisory-from | executed | advisory locks +657/0/1/ExclusiveLock |
+| dbhub-rows100 | fn-advisory-from | executed | advisory locks +650/0/1/ExclusiveLock |
 | dbhub-rows100 | fn-advisory-sub | executed | advisory locks +105/0/1/ExclusiveLock |
-| dbhub-rows100 | fn-advisory-arg | executed | advisory locks +104/0/1/ExclusiveLock |
+| dbhub-rows100 | fn-advisory-arg | executed | advisory locks +105/0/1/ExclusiveLock |
 | dbhub-rows100 | fn-notify-from | executed | notifications received: chan:payload |
 | dbhub-rows100 | fn-notify-arg | executed | notifications received: chan:payload |
 | dbhub-rows100 | fn-sessions-from | executed | none |
@@ -162,7 +162,7 @@ Every case that executed or had a side effect:
 | toolbox | fn-settings-cte | executed | none |
 | toolbox | fn-settings-lateral | executed | none |
 | toolbox | fn-advisory-from | executed | advisory locks +99/0/1/ExclusiveLock |
-| toolbox | fn-advisory-sub | executed | advisory locks +99/0/1/ExclusiveLock |
+| toolbox | fn-advisory-sub | executed | advisory locks +98/0/1/ExclusiveLock |
 | toolbox | fn-advisory-arg | executed | advisory locks +99/0/1/ExclusiveLock |
 | toolbox | fn-notify-from | executed | notifications received: chan:payload |
 | toolbox | fn-notify-arg | executed | notifications received: chan:payload |
@@ -228,18 +228,18 @@ not run
 
 | Measure | dba | crystal | Target | Met |
 |---|---|---|---|---|
-| Cold start (median of 20) | 6.2 ms | 1336 ms (includes docker run) | < 50 ms | yes |
-| Memory after 100 S02 calls | 9.7 MB (linux image, docker stats; median of 3, max 24.8 MB) | 250.3 MB (median of 3, max 267.7 MB) | < 30 MB | yes |
+| Cold start (median of 20) | 5.9 ms | 1352 ms (includes docker run) | < 50 ms | yes |
+| Memory after 100 S02 calls | 9.7 MB (linux image, docker stats; median of 3, max 24.6 MB) | 247.9 MB (median of 3, max 248.5 MB) | < 30 MB | yes |
 | Binary / image size | 22.9 MB (binary) | 395 MB (image) | < 30 MB | yes |
-| 50 concurrent S01 on one stdio session | 0 errors in 50 calls, p95 953 ms | 0 errors in 50 calls, p95 98 ms | 0 errors | yes |
+| 50 concurrent S01 on one stdio session | 0 errors in 50 calls, p95 29 ms | 0 errors in 50 calls, p95 100 ms | 0 errors | yes |
 
-Native binary of the host after the same calls (informational, not checked against the target): 55.6 MB (RSS).
+Native binary of the host after the same calls (informational, not checked against the target): 55.3 MB (RSS).
 
 ## N1 — tool definitions (informational)
 
 | Server | tools | full | deferred |
 |---|---|---|---|
-| dba | 10 | 1359 | 213 |
+| dba | 10 | 1132 | 223 |
 | crystal | 9 | 1225 | 38 |
 | dbhub | 2 | 296 | 7 |
 | dbhub-rows100 | 2 | 296 | 7 |
