@@ -78,3 +78,41 @@ func TestClassify(t *testing.T) {
 		})
 	}
 }
+
+// The tool mapping and the classification hook are what a new server plugs into: a nil map keeps the canonical
+// names and the default classification, which is what dba and crystal rely on.
+func TestSpecToolNameAndClass(t *testing.T) {
+	dba := Spec{Name: results.DBA}
+	if n, ok := dba.ToolName("execute_sql"); n != "execute_sql" || !ok {
+		t.Errorf("nil map: got %q %v, want execute_sql true", n, ok)
+	}
+	if got := dba.Class(true, `ERROR: column "nme" does not exist (SQLSTATE 42703)`); got != results.ClassFailed {
+		t.Errorf("nil Classify must fall back to Classify(Name, …): got %q", got)
+	}
+	other := Spec{Name: "other", Tools: map[string]string{"execute_sql": "run_sql"},
+		Classify: func(bool, string) string { return results.ClassRefused }}
+	if n, ok := other.ToolName("execute_sql"); n != "run_sql" || !ok {
+		t.Errorf("got %q %v, want run_sql true", n, ok)
+	}
+	if _, ok := other.ToolName("analyze_db_health"); ok {
+		t.Error("a tool absent from the map must read as absent")
+	}
+	if got := other.Class(false, "anything"); got != results.ClassRefused {
+		t.Errorf("Classify not used: got %q", got)
+	}
+}
+
+func TestRegister(t *testing.T) {
+	Register("test-server", func(tg Target) Spec { return Spec{Argv: []string{"x", tg.URI}} })
+	t.Cleanup(func() { delete(registry, "test-server") })
+	f, ok := Lookup("test-server")
+	if !ok {
+		t.Fatal("registered server not found")
+	}
+	if got := f(Target{URI: "uri"}).Argv[1]; got != "uri" {
+		t.Errorf("factory got %q, want the target uri", got)
+	}
+	if _, ok := Lookup("absent"); ok {
+		t.Error("Lookup must report an unknown server")
+	}
+}

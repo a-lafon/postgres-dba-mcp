@@ -106,7 +106,13 @@ func securityCriterion(in Inputs) Criterion {
 
 func cell(r results.N2Row, server string) (results.N2Cell, bool) {
 	c, ok := r.Cells[server]
-	return c, ok && c.Status != results.StatusSkipped
+	return c, ok && graded(c)
+}
+
+// graded reports whether a cell is one the targets look at: a scenario that ran, or failed while running. A skipped
+// scenario and a tool the server does not have are counted apart.
+func graded(c results.N2Cell) bool {
+	return c.Status != "" && c.Status != results.StatusSkipped && c.Status != results.StatusNoTool
 }
 
 func okCell(r results.N2Row, server string) (results.N2Cell, bool) {

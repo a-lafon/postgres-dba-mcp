@@ -15,19 +15,29 @@ import (
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
 )
 
-// Connection strings of the bench databases, as seen from the host.
-const (
-	BenchDSN        = "postgres://bench_ro:bench@localhost:55433/bench"
-	BenchAdminDSN   = "postgres://postgres:bench@localhost:55433/bench"
-	FixtureDSN      = "postgres://pgdba_ro:pgdba@localhost:55434/pgdba"
-	FixtureAdminDSN = "postgres://postgres:pgdba@localhost:55434/pgdba"
+// Connection strings of the bench databases, as seen from the host. The ports and the compose project name are the
+// ones bench/compose.yml publishes, defaults included, so that a second harness started with other values in
+// BENCH_PROJECT, BENCH_PG_PORT and BENCH_FIXTURE_PORT runs beside the first without touching it.
+var (
+	BenchDSN        = "postgres://bench_ro:bench@localhost:" + env("BENCH_PG_PORT", "55433") + "/bench"
+	BenchAdminDSN   = "postgres://postgres:bench@localhost:" + env("BENCH_PG_PORT", "55433") + "/bench"
+	FixtureDSN      = "postgres://pgdba_ro:pgdba@localhost:" + env("BENCH_FIXTURE_PORT", "55434") + "/pgdba"
+	FixtureAdminDSN = "postgres://postgres:pgdba@localhost:" + env("BENCH_FIXTURE_PORT", "55434") + "/pgdba"
+
+	// Network is the compose network of bench/compose.yml: the project name plus its network name.
+	Network = env("BENCH_PROJECT", "bench") + "_bench"
 )
+
+// env returns the environment variable name, or def when it is unset or empty.
+func env(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
+}
 
 // CrystalImage is crystaldba/postgres-mcp 0.3.0, pinned by digest.
 const CrystalImage = "crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b"
-
-// Network is the compose network of bench/compose.yml, project name `bench`.
-const Network = "bench_bench"
 
 // ErrMissing is returned by Spec.Start when an optional server's binary is not installed.
 var ErrMissing = errors.New("server binary not found")
@@ -40,6 +50,29 @@ type Spec struct {
 	Cleanup func() // run after Close, to stop what killing the client process leaves behind
 	// Container is the name of the docker container the server runs in, empty for a native process.
 	Container string
+	// Tools maps a canonical bench tool name (execute_sql, list_schemas, list_objects, get_object_details,
+	// explain_query, get_top_queries, analyze_db_health, analyze_query_indexes) to this server's own name for it.
+	// A missing key means the server has no such tool. Nil means the server uses the canonical names.
+	Tools map[string]string
+	// Classify replaces the default classification of an execute_sql answer. Nil means Classify(Name, ...).
+	Classify func(isError bool, text string) string
+}
+
+// ToolName returns the name this server gives the canonical bench tool. ok is false when it has no such tool.
+func (s Spec) ToolName(canonical string) (name string, ok bool) {
+	if s.Tools == nil {
+		return canonical, true
+	}
+	name, ok = s.Tools[canonical]
+	return name, ok
+}
+
+// Class classifies an execute_sql answer of this server, with Classify when it has one.
+func (s Spec) Class(isError bool, text string) string {
+	if s.Classify != nil {
+		return s.Classify(isError, text)
+	}
+	return Classify(s.Name, isError, text)
 }
 
 // Start starts the server and connects to it.
@@ -73,6 +106,31 @@ func (s *Server) Close() {
 	}
 }
 
+// Target is the database a server under test connects to: DSN as the host sees it, URI as a container on Network does.
+type Target struct {
+	DSN string
+	URI string
+}
+
+// registry holds the servers added by Register, by name.
+var registry = map[string]func(Target) Spec{}
+
+// Register adds a server the bench can measure under name: `--servers=<name>` then starts it on n1, n2 and security.
+// new is called once per level with the database to connect to, and the spec it returns is named after name. Call it
+// from the init() of a file of its own, so that adding a server adds no line to any existing file.
+func Register(name string, new func(Target) Spec) {
+	if _, dup := registry[name]; dup || name == results.DBA || name == results.Crystal {
+		panic("servers: server " + name + " is already registered")
+	}
+	registry[name] = new
+}
+
+// Lookup returns the factory registered under name.
+func Lookup(name string) (func(Target) Spec, bool) {
+	f, ok := registry[name]
+	return f, ok
+}
+
 // BinPath returns where the bench builds postgres-dba-mcp, relative to the bench folder.
 func BinPath(benchDir string) string { return filepath.Join(benchDir, "bin", "postgres-dba-mcp") }
 
@@ -104,7 +162,8 @@ func PgEdge(dsn string) (Spec, error) {
 	if err != nil {
 		return Spec{}, fmt.Errorf("%s: %w", PgEdgeBinary, ErrMissing)
 	}
-	return Spec{Name: results.PgEdge, Argv: []string{path}, Env: []string{"PGEDGE_POSTGRES_CONNECTION_STRING=" + dsn}}, nil
+	return Spec{Name: results.PgEdge, Argv: []string{path}, Env: []string{"PGEDGE_POSTGRES_CONNECTION_STRING=" + dsn},
+		Tools: map[string]string{"execute_sql": "query_database"}}, nil
 }
 
 // Info is what the report records about the build under test.

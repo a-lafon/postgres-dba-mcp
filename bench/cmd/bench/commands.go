@@ -173,10 +173,48 @@ func (s *session) logCost(c *tokens.Counter) {
 
 func (s *session) dbaSpec() servers.Spec { return servers.DBA(s.bin(), servers.BenchDSN) }
 
-// containerDSN is the bench database as a container on the bench network sees it.
-const containerDSN = "postgres://bench_ro:bench@pg:5432/bench"
+// The bench databases as a container on the bench network sees them.
+const (
+	containerDSN        = "postgres://bench_ro:bench@pg:5432/bench"
+	fixtureContainerDSN = "postgres://pgdba_ro:pgdba@fixture:5432/pgdba"
+)
 
 func (s *session) crystalSpec() servers.Spec { return servers.Crystal(containerDSN) }
+
+// benchTarget and fixtureTarget are the two databases a server under test connects to.
+func benchTarget() servers.Target {
+	return servers.Target{DSN: servers.BenchDSN, URI: containerDSN}
+}
+
+func fixtureTarget() servers.Target {
+	return servers.Target{DSN: servers.FixtureDSN, URI: fixtureContainerDSN}
+}
+
+// specs returns the servers to measure against t, in report order: dba then crystal, or the ones --servers names.
+func (s *session) specs(t servers.Target) ([]servers.Spec, error) {
+	names := []string{results.DBA, results.Crystal}
+	if s.opts.servers != "" {
+		names = strings.Split(s.opts.servers, ",")
+	}
+	out := make([]servers.Spec, 0, len(names))
+	for _, name := range names {
+		switch name {
+		case results.DBA:
+			out = append(out, servers.DBA(s.bin(), t.DSN))
+		case results.Crystal:
+			out = append(out, servers.Crystal(t.URI))
+		default:
+			f, ok := servers.Lookup(name)
+			if !ok {
+				return nil, fmt.Errorf("unknown server %q in --servers", name)
+			}
+			spec := f(t)
+			spec.Name = name
+			out = append(out, spec)
+		}
+	}
+	return out, nil
+}
 
 func cmdN1(ctx context.Context, s *session) error {
 	l, err := s.begin(ctx)
@@ -186,7 +224,11 @@ func cmdN1(ctx context.Context, s *session) error {
 	defer l.close()
 	defer s.logCost(l.counter)
 	out := results.N1{Env: l.env}
-	for _, spec := range []servers.Spec{s.dbaSpec(), s.crystalSpec()} {
+	specs, err := s.specs(benchTarget())
+	if err != nil {
+		return err
+	}
+	for _, spec := range specs {
 		srv, err := spec.Start(ctx)
 		if err != nil {
 			return err
@@ -222,8 +264,17 @@ func sameRole(ctx context.Context, db *pgxpool.Pool, specs []servers.Spec) (bool
 			return false, err
 		}
 		defer srv.Close()
-		if _, err := srv.Call(ctx, "list_schemas", map[string]any{}); err != nil {
-			return false, fmt.Errorf("list_schemas on %s: %w", spec.Name, err)
+		// list_schemas opens a session without reading anything; a server that has no such tool gets a bare SELECT.
+		tool, args := "list_schemas", map[string]any{}
+		if _, ok := spec.ToolName(tool); !ok {
+			tool, args = "execute_sql", map[string]any{"sql": "SELECT 1"}
+		}
+		name, ok := spec.ToolName(tool)
+		if !ok {
+			continue
+		}
+		if _, err := srv.Call(ctx, name, args); err != nil {
+			return false, fmt.Errorf("%s on %s: %w", name, spec.Name, err)
 		}
 	}
 	rows, err := db.Query(ctx, "SELECT DISTINCT usename FROM pg_stat_activity WHERE datname = 'bench' AND backend_type = 'client backend'")
@@ -277,7 +328,10 @@ func cmdN2(ctx context.Context, s *session) error {
 	}
 	defer l.close()
 	defer s.logCost(l.counter)
-	specs := []servers.Spec{s.dbaSpec(), s.crystalSpec()}
+	specs, err := s.specs(benchTarget())
+	if err != nil {
+		return err
+	}
 	same, err := sameRole(ctx, l.db, specs)
 	if err != nil {
 		return err
@@ -294,7 +348,7 @@ func cmdN2(ctx context.Context, s *session) error {
 	if err != nil {
 		return err
 	}
-	if s.opts.withPgEdge && len(specs) == 2 { // binary missing: its cells read skipped
+	if s.opts.withPgEdge && !hasSpec(specs, results.PgEdge) { // binary missing: its cells read skipped
 		for _, row := range rows {
 			if row.ID <= "S06" {
 				row.Cells[results.PgEdge] = results.N2Cell{Status: results.StatusSkipped}
@@ -327,17 +381,34 @@ func cmdSecurity(ctx context.Context, s *session) error {
 	}
 	defer r.Close(ctx)
 	out := results.Security{Env: l.env, Attacks: map[string][]results.SecurityCase{}}
-	dba := servers.DBA(s.bin(), servers.FixtureDSN)
-	crystal := servers.Crystal("postgres://pgdba_ro:pgdba@fixture:5432/pgdba")
-	for _, spec := range []servers.Spec{dba, crystal} {
+	specs, err := s.specs(fixtureTarget())
+	if err != nil {
+		return err
+	}
+	for _, spec := range specs {
 		if out.Attacks[spec.Name], err = r.Replay(ctx, spec, attacks, true); err != nil {
 			return err
 		}
 	}
-	if out.Legit, err = r.Replay(ctx, dba, legit, false); err != nil {
-		return err
+	// The legit corpus counts postgres-dba-mcp's own false refusals: it is replayed through it alone.
+	for _, spec := range specs {
+		if spec.Name == results.DBA {
+			if out.Legit, err = r.Replay(ctx, spec, legit, false); err != nil {
+				return err
+			}
+		}
 	}
 	return results.Save(l.dir, "security", out)
+}
+
+// hasSpec reports whether a server is among specs.
+func hasSpec(specs []servers.Spec, name string) bool {
+	for _, s := range specs {
+		if s.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func readCorpus(s *session, name string) ([]security.Case, error) {

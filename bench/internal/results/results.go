@@ -62,6 +62,9 @@ const (
 	StatusOversized = "failed (oversized)"
 	StatusError     = "failed (error)"
 	StatusSkipped   = "skipped"
+	// StatusNoTool is a tool the server does not have: counted apart, never as a failure nor as a wrong answer, and
+	// left out of the medians and of the correctness verdict.
+	StatusNoTool = "no tool"
 )
 
 // Truncation states of an N2 cell.

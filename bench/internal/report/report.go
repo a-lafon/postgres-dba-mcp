@@ -175,7 +175,7 @@ func renderN2(sb *strings.Builder, in Inputs) {
 		if a.Status == results.StatusOK {
 			bytes, lat, trunc = fmt.Sprint(a.Bytes), fmt.Sprintf("%.0f / %.0f", a.P50MS, a.P95MS), a.Truncation
 		}
-		if a.Status != results.StatusSkipped && b.Status != "" {
+		if graded(a) && graded(b) {
 			correct = yesNo(a.Correct) + " / " + yesNo(b.Correct)
 		}
 		rows = append(rows, []string{r.ID, r.Tool, cellTokens(r, results.DBA), cellTokens(r, results.Crystal), delta, bytes, lat, correct, trunc})
@@ -394,6 +394,9 @@ func renderSkipped(sb *strings.Builder, in Inputs) {
 				}
 				if c.Status == results.StatusSkipped {
 					lines = append(lines, fmt.Sprintf("- skipped: %s on %s", r.ID, server))
+				}
+				if c.Status == results.StatusNoTool {
+					lines = append(lines, fmt.Sprintf("- no %s tool: %s on %s", r.Tool, r.ID, server))
 				}
 			}
 		}

@@ -40,6 +40,7 @@ flags:
   --run=<id>                 run id of the results folder (default: a new UTC timestamp; report: the latest run)
   --tokens=claude            count tokens through claude -p, without any API key (n1, n2, all)
   --with-pgedge              also measure pgEdge on S01-S06 (n2)
+  --servers=<a,b>            measure these servers only (n1, n2, security); default dba,crystal
 `
 
 // errUsage marks an invocation error: usage text, exit status 2.
@@ -59,6 +60,7 @@ type options struct {
 	scale       float64
 	noPagila    bool
 	withPgEdge  bool
+	servers     string
 	failOnBlk   bool
 	regrade     bool
 	recheck     bool
@@ -82,6 +84,7 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	fs.Float64Var(&o.scale, "scale", 1, "")
 	fs.BoolVar(&o.noPagila, "no-pagila", false, "")
 	fs.BoolVar(&o.withPgEdge, "with-pgedge", false, "")
+	fs.StringVar(&o.servers, "servers", "", "")
 	fs.BoolVar(&o.failOnBlk, "fail-on-blocking", false, "")
 	fs.BoolVar(&o.regrade, "regrade", false, "")
 	fs.BoolVar(&o.recheck, "recheck", false, "")

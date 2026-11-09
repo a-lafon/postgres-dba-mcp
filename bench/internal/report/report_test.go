@@ -256,3 +256,24 @@ func TestAdviceMatches(t *testing.T) {
 		})
 	}
 }
+
+// A tool the server does not have is counted apart: it must leave the correctness verdict and the token medians
+// alone, where a wrong answer would fail the verdict.
+func TestNoToolCellIsNotAWrongAnswer(t *testing.T) {
+	in := fixtureInputs()
+	missing := results.N2Cell{Status: results.StatusNoTool}
+	in.N2.Rows = append(in.N2.Rows, results.N2Row{ID: "S19b", Tool: "analyze_query_indexes",
+		Cells: map[string]results.N2Cell{results.DBA: missing, results.Crystal: cellOK(10)}})
+	for _, c := range Criteria(in) {
+		if c.Key == "n2-correct" && c.Met != Yes {
+			t.Errorf("correctness verdict = %q (%s), want it unchanged by a missing tool", c.Met, c.Result)
+		}
+	}
+	md, v := Render(in)
+	if v.Name != Go {
+		t.Errorf("verdict %s, want %s", v.Name, Go)
+	}
+	if !strings.Contains(md, "- no analyze_query_indexes tool: S19b on dba") {
+		t.Error("the report does not list the missing tool among the skipped items")
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
+	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
 )
 
 func sample(t *testing.T, name string) string {
@@ -62,7 +63,7 @@ func TestGradeCellRejectsAnErrorAnswer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cell := results.N2Cell{Correct: true, Truncation: results.TruncNone}
-			gradeCell(&cell, tt.server, Scenario{ID: tt.id}, factCall(nil, nil), tt.text, tt.isError)
+			gradeCell(&cell, servers.Spec{Name: tt.server}, Scenario{ID: tt.id}, factCall(nil, nil), tt.text, tt.isError)
 			if cell.Status != tt.wantStatus || cell.Correct != tt.correct {
 				t.Errorf("got status %q correct %v, want %q %v", cell.Status, cell.Correct, tt.wantStatus, tt.correct)
 			}
@@ -88,7 +89,7 @@ func TestGradeCell(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cell := results.N2Cell{Correct: true, Truncation: results.TruncNone}
-			gradeCell(&cell, results.DBA, tt.scenario, factCall(nil, tt.facts), tt.text, false)
+			gradeCell(&cell, servers.Spec{Name: results.DBA}, tt.scenario, factCall(nil, tt.facts), tt.text, false)
 			if cell.Truncation != tt.wantTrunc || cell.Correct != tt.correct {
 				t.Errorf("got truncation %q correct %v (missing %q), want %q %v", cell.Truncation, cell.Correct, cell.Missing, tt.wantTrunc, tt.correct)
 			}

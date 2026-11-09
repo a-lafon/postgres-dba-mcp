@@ -151,12 +151,16 @@ func (r *Replayer) Replay(ctx context.Context, spec servers.Spec, cases []Case, 
 		}
 		_, _ = fmt.Fprintf(r.Log, "security %s %s\n", spec.Name, c.ID)
 		sc := results.SecurityCase{ID: c.ID, Category: c.Category}
-		res, err := srv.Call(ctx, "execute_sql", map[string]any{"sql": c.SQL})
+		tool, ok := spec.ToolName("execute_sql")
+		if !ok {
+			return nil, fmt.Errorf("%s has no execute_sql tool: nothing to replay", spec.Name)
+		}
+		res, err := srv.Call(ctx, tool, map[string]any{"sql": c.SQL})
 		restart := false
 		if err != nil {
 			sc.Class, sc.Text, restart = results.ClassFailed, "transport: "+err.Error(), true
 		} else {
-			sc.Class, sc.Text = servers.Classify(spec.Name, res.IsError, res.Text), firstLine(res.Text)
+			sc.Class, sc.Text = spec.Class(res.IsError, res.Text), firstLine(res.Text)
 		}
 		if sideEffects {
 			after, err := Take(ctx, r.admin, r.sentinel)
