@@ -118,3 +118,49 @@ Two limits of the harness show up on DBHub and would need a change to shared fil
 
 - `Fact` has one form for postgres-dba-mcp and one for crystaldba (`internal/scenarios/facts.go`), and anything else is graded against the postgres-dba-mcp CSV form. DBHub answers in indented JSON, so S02, S04, S05, S06 and S07 are marked incorrect on rendering, not on content. `Truncated()` only knows the `-- … truncated` footer and the `…[+` cell marker, so DBHub's `"truncated": true` is not seen and S02, S03 and S04 read `truncation missing`.
 - `Runner.measure` calls a scenario's setup steps by their canonical tool name without passing them through `Spec.ToolName`, so S21 fails with `Tool explain_query not found` on `dbhub-4tools`.
+## MCP Toolbox 1.16.0
+
+Two variants, both from the image pinned by digest in `internal/servers/toolbox.go`
+(`us-central1-docker.pkg.dev/database-toolbox/toolbox/toolbox@sha256:190bd9d9…`, which reports `toolbox version
+1.16.0+container.release.linux.amd64.06ea49d`), started like crystaldba: `docker run -i --rm` on the bench network,
+database host `pg` (or `fixture`), user `bench_ro`. The prebuilt `postgres` source reads the connection from
+`POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DATABASE`, `POSTGRES_USER` and `POSTGRES_PASSWORD`.
+
+```sh
+go run ./cmd/bench n1 --servers=dba,toolbox,toolbox-subset --run=<id>
+go run ./cmd/bench n2 --servers=dba,toolbox,toolbox-subset --run=<id>
+go run ./cmd/bench security --servers=toolbox --run=<id>
+go run ./cmd/toolboxmeta --run=<id>        # results/<id>/toolbox.json: image, digest, version, command lines, cost per tool
+```
+
+- `--servers=toolbox`: `--prebuilt postgres --stdio --disable-version-check`, the 29 prebuilt tools.
+- `--servers=toolbox-subset`: the same definitions cut to 10, the number postgres-dba-mcp exposes. The file is
+  `internal/servers/toolbox-subset.yaml`, copied entry by entry from the prebuilt configuration of 1.16.0 and mounted
+  at `/config/tools.yaml`; its header says which tool was kept for which postgres-dba-mcp tool. A file is the only way
+  to pick a subset over stdio: `--prebuilt` serves all 29, and the prebuilt toolsets (`data`, `monitor`, `health`,
+  `view-config`, `replication`) are only addressable by URL path in HTTP mode. The file is written to the host's
+  temporary folder for the Docker daemon to mount, so this variant does not run from the `bench` compose service.
+
+Three canonical tools are left unmapped, so their scenarios read `no tool` instead of a failure:
+
+- `explain_query`: Toolbox has `get_query_plan`, but its required parameter is named `query`, not `sql`, so the
+  harness call is rejected before it runs (`provided parameters were invalid: parameter "query" is required`). It has
+  no ANALYZE and no hypothetical index either, so S14 and S21 are out of reach whatever the parameter name.
+- `analyze_db_health`: Toolbox has no health tool, it has a `health` toolset of eight separate checks.
+- `analyze_query_indexes`: Toolbox recommends no index.
+
+`list_tables` answers both `list_objects` and `get_object_details`: it is the only exploration tool Toolbox has. It
+takes neither `schema_name`, `object_type` nor `object_name`, and silently ignores arguments it does not know (unlike
+a missing required one), so S09, S10 and S11 all return every user table in full detail, 160 kB each.
+
+**Read-only mode: there is none for a self-hosted Postgres in 1.16.0.** The `postgres` source has no such option, and
+`internal/sources/postgres/postgres.go` hard-codes `func (s *Source) IsReadOnly() bool { return false }`, which is
+what makes `execute_sql` annotate itself `readOnlyHint: false, destructiveHint: true`. Over the 131 attacks Toolbox
+refused none: 93 failed at execution (54 of them `SQLSTATE 42501`, permission denied, which is `bench_ro` stopping
+them, not the server) and 38 executed. `Spec.Classify` is therefore nil, the default classification fits.
+
+**Known limit of the comparison.** `Fact.For` only has a postgres-dba-mcp form and a crystaldba one, and falls back to
+the postgres-dba-mcp (CSV) form for any other server. Toolbox answers one JSON object per row, so S05, S06 and S10
+read incorrect although the values are there: the facts are searched as `526,358.12`, `\N` or `→ customer(customer_id)`.
+S02 and S04 read incorrect for a real reason (no bound, no truncation signal) and S03 (`SELECT * FROM events`) exceeds
+the 16 MiB response cap.
