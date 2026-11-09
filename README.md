@@ -11,7 +11,7 @@
 
 Let Claude Code, Codex or any MCP client explore a PostgreSQL database, run SQL, read query plans, test hypothetical indexes, find the slowest queries and check the database's health, without flooding the model's context or escaping read-only mode.
 
-A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It is a drop-in replacement for [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0, with its nine tools under the same names and the same parameters, plus `analyze_locks` of its own, in one static binary. Switching is one line of client configuration; what the model receives changes (compact CSV, bounded results, one statement per call), as listed in [MIGRATION.md](MIGRATION.md).
+A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It is a drop-in replacement for [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0, with its nine tools under the same names and the same parameters, plus `analyze_locks` of its own, in one static binary. That project's last commit is from August 2026, and its 0.3.0 no longer installs from PyPI ([#237](https://github.com/crystaldba/postgres-mcp/issues/237)). Switching is one line of client configuration; what the model receives changes (compact CSV, bounded results, one statement per call), as listed in [MIGRATION.md](MIGRATION.md).
 
 ## Why
 
