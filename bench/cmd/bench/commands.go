@@ -22,6 +22,7 @@ import (
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/scenarios"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/security"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
+	sessions "github.com/a-lafon/postgres-dba-mcp/bench/internal/session"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/tokens"
 )
 
@@ -469,6 +470,25 @@ func cmdN3(ctx context.Context, s *session) error {
 		return err
 	}
 	return results.Save(l.dir, "n3", results.N3{Env: l.env, Runs: runs})
+}
+
+func cmdSession(ctx context.Context, s *session) error {
+	l, err := s.begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer l.close()
+	defer s.logCost(l.counter)
+	specs, err := s.specs(benchTarget())
+	if err != nil {
+		return err
+	}
+	r := &sessions.Runner{Counter: l.counter, Specs: specs, Log: s.err}
+	rows, err := r.Run(ctx)
+	if err != nil {
+		return err
+	}
+	return results.Save(l.dir, "session", results.Session{Env: l.env, Servers: rows})
 }
 
 func cmdOps(ctx context.Context, s *session) error {

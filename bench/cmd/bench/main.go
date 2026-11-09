@@ -22,8 +22,8 @@ commands:
   up                         start the bench databases (docker compose up) and build the server binary
   load [--scale=<f>] [--no-pagila]
                              load the data set and replay the workload
-  n1 | n2 | security | n3 | ops
-                             run one level
+  n1 | n2 | security | n3 | ops | session
+                             run one level (session: the long-session context measure, no model call)
   n3 --regrade --run=<id>    grade again the stored n3 transcripts of a run, without calling claude
   n2 --recheck --run=<id>    grade again the stored n2 outputs of a run, without calling any server or claude
   n3 --tasks=core|extra|all  the six tasks of the verdict (default), the schema and index-tuning ones, or both
@@ -112,6 +112,7 @@ var commands = map[string]func(context.Context, *session) error{
 	"n2":       cmdN2,
 	"security": cmdSecurity,
 	"n3":       cmdN3,
+	"session":  cmdSession,
 	"judge":    cmdJudge,
 	"ops":      cmdOps,
 	"report":   cmdReport,

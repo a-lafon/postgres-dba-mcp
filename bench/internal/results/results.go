@@ -140,6 +140,35 @@ type Security struct {
 	Legit map[string][]SecurityCase `json:"legit"`
 }
 
+// SessionTurn is one turn of the long-session level: what was asked, with which tool, and what it put in context.
+type SessionTurn struct {
+	Intent   string `json:"intent"`
+	Want     string `json:"want"`
+	Tool     string `json:"tool"`
+	Fallback bool   `json:"fallback,omitempty"`
+	SQL      string `json:"sql,omitempty"` // the fallback SQL, the same for every server that falls back
+	Tokens   int    `json:"tokens"`
+	Bytes    int    `json:"bytes"`
+	// Cumulative is the context at this turn: the tool definitions, which every request carries, plus every
+	// answer from the first turn to this one.
+	Cumulative int    `json:"cumulative"`
+	Status     string `json:"status"`
+	Note       string `json:"note,omitempty"`
+}
+
+// SessionServer is one server's run of the investigation.
+type SessionServer struct {
+	Server     string        `json:"server"`
+	ToolTokens int           `json:"tool_tokens"`
+	Turns      []SessionTurn `json:"turns"`
+}
+
+// Session is session.json.
+type Session struct {
+	Env     Env             `json:"env"`
+	Servers []SessionServer `json:"servers"`
+}
+
 // N3Run is one `claude -p` run.
 type N3Run struct {
 	Task         string   `json:"task"`
@@ -240,7 +269,7 @@ type Ops struct {
 	RSSMB map[string]Measure `json:"rss_mb"`
 	// NativeRSSMB is postgres-dba-mcp's native binary after the same calls (informational).
 	NativeRSSMB Measure            `json:"native_rss_mb"`
-	SizeMB map[string]Measure `json:"size_mb"`
+	SizeMB      map[string]Measure `json:"size_mb"`
 	// Concurrency is the same measure for every server: N calls at once on one stdio session of one process.
 	Concurrency map[string]Conc `json:"concurrency"`
 }
