@@ -198,29 +198,7 @@ func (s *session) specs(t servers.Target) ([]servers.Spec, error) {
 	if s.opts.servers != "" {
 		names = strings.Split(s.opts.servers, ",")
 	}
-	return specsOf(names, t, s.bin())
-}
-
-// specsOf builds the spec of each named server against t.
-func specsOf(names []string, t servers.Target, bin string) ([]servers.Spec, error) {
-	out := make([]servers.Spec, 0, len(names))
-	for _, name := range names {
-		switch name {
-		case results.DBA:
-			out = append(out, servers.DBA(bin, t.DSN))
-		case results.Crystal:
-			out = append(out, servers.Crystal(t.URI))
-		default:
-			f, ok := servers.Lookup(name)
-			if !ok {
-				return nil, fmt.Errorf("unknown server %q in --servers", name)
-			}
-			spec := f(t)
-			spec.Name = name
-			out = append(out, spec)
-		}
-	}
-	return out, nil
+	return servers.Of(names, t, s.bin())
 }
 
 func cmdN1(ctx context.Context, s *session) error {
@@ -320,7 +298,7 @@ func cmdN2Recheck(ctx context.Context, s *session) error {
 	defer db.Close()
 	// The specs are rebuilt from the names in the results: a cell is graded with its own server's reading of a
 	// refusal and of a truncation signal, which a bare spec does not have.
-	specs, err := specsOf(n2Servers(n2), benchTarget(), s.bin())
+	specs, err := servers.Of(n2Servers(n2), benchTarget(), s.bin())
 	if err != nil {
 		return err
 	}

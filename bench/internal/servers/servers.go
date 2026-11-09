@@ -130,6 +130,29 @@ func Register(name string, new func(Target) Spec) {
 	registry[name] = new
 }
 
+// Of builds the spec of each named server against t, in the order given; bin is where the postgres-dba-mcp
+// binary lives, for the only server the registry does not hold.
+func Of(names []string, t Target, bin string) ([]Spec, error) {
+	out := make([]Spec, 0, len(names))
+	for _, name := range names {
+		switch name {
+		case results.DBA:
+			out = append(out, DBA(bin, t.DSN))
+		case results.Crystal:
+			out = append(out, Crystal(t.URI))
+		default:
+			f, ok := Lookup(name)
+			if !ok {
+				return nil, fmt.Errorf("unknown server %q", name)
+			}
+			spec := f(t)
+			spec.Name = name
+			out = append(out, spec)
+		}
+	}
+	return out, nil
+}
+
 // Lookup returns the factory registered under name.
 func Lookup(name string) (func(Target) Spec, bool) {
 	f, ok := registry[name]

@@ -1,11 +1,11 @@
-// Command dbhubmeta writes bench/results/<run>/dbhub.json: for every DBHub variant, the command line it is started
-// with, the tools it exposes and the token cost of each of their definitions, plus the image, the digest, the version
+// Command toolmeta writes bench/results/<run>/<out>.json: for every measured server, the command line it is started
+// with, the tools it exposes and the token cost of each of their definitions, plus its image, the digest, the version
 // the server reports and the environment the run was measured in.
 //
 // It is the per-tool detail the `n1` level does not break down; `n1` gives the total for the same tool sets. Run it
 // from the bench folder, after `n1`, whose n1.json it reads the environment from:
 //
-//	go run ./cmd/dbhubmeta --run=<id> [--servers=dbhub,dbhub-rows100,...]
+//	go run ./cmd/toolmeta --run=<id> [--servers=dbhub,dbhub-rows100,...] [--out=dbhub]
 package main
 
 import (
@@ -36,9 +36,11 @@ type tool struct {
 	Bytes       int    `json:"bytes"`
 }
 
-// variant is one measured DBHub configuration.
+// variant is one measured server configuration.
 type variant struct {
 	Name string `json:"name"`
+	// Image is the image the server runs in, with its digest, empty for a native process.
+	Image string `json:"image,omitempty"`
 	// Argv is the exact command line the harness starts the server with.
 	Argv []string `json:"argv"`
 	// Config is the dbhub.toml the command writes inside the container, empty for the untuned default.
@@ -53,11 +55,9 @@ type variant struct {
 	Total int `json:"total_tokens"`
 }
 
-// out is dbhub.json.
+// out is <out>.json.
 type out struct {
 	Env     results.Env `json:"env"`
-	Image   string      `json:"image"`
-	Digest  string      `json:"digest"`
 	Date    string      `json:"date"`
 	Variant []variant   `json:"variants"`
 }
@@ -71,7 +71,8 @@ func main() {
 
 func run() error {
 	runID := flag.String("run", "", "run id of the results folder")
-	names := flag.String("servers", strings.Join([]string{servers.DBHubRef, servers.DBHubRows100, servers.DBHub4Tools, servers.DBHubDefault}, ","), "variants to measure")
+	names := flag.String("servers", strings.Join([]string{servers.DBHubRef, servers.DBHubRows100, servers.DBHub4Tools, servers.DBHubDefault}, ","), "servers to measure")
+	outName := flag.String("out", "dbhub", "name of the JSON file written in the run folder")
 	flag.Parse()
 	if *runID == "" {
 		return fmt.Errorf("--run=<id> is required")
@@ -95,27 +96,25 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	o := out{Env: n1.Env, Image: servers.DBHubImage, Date: time.Now().UTC().Format(time.RFC3339)}
-	_, o.Digest, _ = strings.Cut(servers.DBHubImage, "@")
+	o := out{Env: n1.Env, Date: time.Now().UTC().Format(time.RFC3339)}
 	ctx := context.Background()
 	for _, name := range strings.Split(*names, ",") {
-		v, err := measure(ctx, counter, name)
+		v, err := measure(ctx, counter, name, servers.BinPath(wd))
 		if err != nil {
 			return err
 		}
 		o.Variant = append(o.Variant, v)
 	}
-	return results.Save(dir, "dbhub", o)
+	return results.Save(dir, *outName, o)
 }
 
-func measure(ctx context.Context, c *tokens.Counter, name string) (variant, error) {
-	f, ok := servers.Lookup(name)
-	if !ok {
-		return variant{}, fmt.Errorf("unknown server %q", name)
+func measure(ctx context.Context, c *tokens.Counter, name, bin string) (variant, error) {
+	specs, err := servers.Of([]string{name}, servers.Target{DSN: servers.BenchDSN, URI: containerDSN}, bin)
+	if err != nil {
+		return variant{}, err
 	}
-	spec := f(servers.Target{DSN: servers.BenchDSN, URI: containerDSN})
-	spec.Name = name
-	v := variant{Name: name, Argv: spec.Argv, Canonical: spec.Tools}
+	spec := specs[0]
+	v := variant{Name: name, Image: spec.Image, Argv: spec.Argv, Canonical: spec.Tools}
 	for i, a := range spec.Argv {
 		if cfg, ok := strings.CutPrefix(a, "DBHUB_TOML="); ok && i > 0 && spec.Argv[i-1] == "-e" {
 			v.Config = cfg
