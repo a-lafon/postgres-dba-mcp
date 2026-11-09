@@ -50,6 +50,8 @@ type Spec struct {
 	Cleanup func() // run after Close, to stop what killing the client process leaves behind
 	// Container is the name of the docker container the server runs in, empty for a native process.
 	Container string
+	// Image is the image that container runs, for its size; empty for a native process.
+	Image string
 	// Tools maps a canonical bench tool name (execute_sql, list_schemas, list_objects, get_object_details,
 	// explain_query, get_top_queries, analyze_db_health, analyze_query_indexes) to this server's own name for it.
 	// A missing key means the server has no such tool. Nil means the server uses the canonical names.
@@ -153,6 +155,7 @@ func Crystal(uri string) Spec {
 			"-e", "DATABASE_URI=" + uri, CrystalImage, "--access-mode=restricted"},
 		Cleanup:   func() { _ = exec.Command("docker", "rm", "-f", name).Run() },
 		Container: name,
+		Image:     CrystalImage,
 	}
 }
 
@@ -319,5 +322,6 @@ func DBAImage(uri string) Spec {
 			"-e", "DATABASE_URI=" + uri, ImageTag, "--access-mode=restricted"},
 		Cleanup:   func() { _ = exec.Command("docker", "rm", "-f", name).Run() },
 		Container: name,
+		Image:     ImageTag,
 	}
 }

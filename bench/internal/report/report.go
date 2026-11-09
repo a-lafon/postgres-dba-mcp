@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/a-lafon/postgres-dba-mcp/bench/internal/ops"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/scenarios"
 )
@@ -322,6 +323,21 @@ func renderN3(sb *strings.Builder, in Inputs) {
 	tbl(sb, []string{"Task", "Pass dba", "Tokens dba", "Turns dba", "Pass crystal", "Tokens crystal", "Turns crystal"}, rows)
 }
 
+// concText reads one concurrency measure as a report cell.
+func concText(c results.Conc) string {
+	switch {
+	case c.Skipped:
+		return "skipped"
+	case c.Calls == 0:
+		return "n/a"
+	}
+	s := fmt.Sprintf("%d errors in %d calls, p95 %.0f ms", c.Errors, c.Calls, c.P95MS)
+	if c.Note != "" {
+		s += " (" + c.Note + ")"
+	}
+	return s
+}
+
 func renderOps(sb *strings.Builder, in Inputs) {
 	sb.WriteString("## Operations\n\n")
 	if in.Ops == nil {
@@ -350,15 +366,15 @@ func renderOps(sb *strings.Builder, in Inputs) {
 		}
 		return yn(m.Value < limit)
 	}
-	conc, concMet := fmt.Sprintf("%d errors in %d calls", o.Concurrency.Errors, o.Concurrency.Calls), yn(o.Concurrency.Errors == 0)
-	if o.Concurrency.Skipped {
+	conc, concMet := concText(o.Concurrency[results.DBA]), yn(o.Concurrency[results.DBA].Errors == 0)
+	if c, ok := o.Concurrency[results.DBA]; !ok || c.Skipped {
 		conc, concMet = "skipped", Unverified
 	}
 	rows := [][]string{
 		{"Cold start (median of 20)", show(o.ColdStartMS[results.DBA], "%.1f ms"), show(o.ColdStartMS[results.Crystal], "%.0f ms"), "< 50 ms", met(o.ColdStartMS[results.DBA], 50)},
 		{"Memory after 100 S02 calls", show(o.RSSMB[results.DBA], "%.1f MB"), show(o.RSSMB[results.Crystal], "%.1f MB"), "< 30 MB", met(o.RSSMB[results.DBA], 30)},
 		{"Binary / image size", show(o.SizeMB[results.DBA], "%.1f MB"), show(o.SizeMB[results.Crystal], "%.0f MB"), "< 30 MB", met(o.SizeMB[results.DBA], 30)},
-		{"50 concurrent S01 over HTTP", conc, "n/a", "0 errors", concMet},
+		{fmt.Sprintf("%d concurrent S01 on one stdio session", ops.Concurrent), conc, concText(o.Concurrency[results.Crystal]), "0 errors", concMet},
 	}
 	tbl(sb, []string{"Measure", "dba", "crystal", "Target", "Met"}, rows)
 	// ops.json written before the image measure has no native value: nothing to say.
@@ -416,8 +432,10 @@ func renderSkipped(sb *strings.Builder, in Inputs) {
 				lines = append(lines, "- skipped: ops "+name)
 			}
 		}
-		if in.Ops.Concurrency.Skipped {
-			lines = append(lines, "- skipped: ops concurrency")
+		for _, name := range scenarios.Sorted(in.Ops.Concurrency) {
+			if in.Ops.Concurrency[name].Skipped {
+				lines = append(lines, "- skipped: ops concurrency "+name)
+			}
 		}
 	}
 	if len(lines) == 0 {

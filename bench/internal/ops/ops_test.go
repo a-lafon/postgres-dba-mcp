@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -71,5 +72,14 @@ func TestParseSamples(t *testing.T) {
 				t.Errorf("got %v, %v; want %v, err %v", got, err, tt.want, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestFirstError(t *testing.T) {
+	if got := firstError(errors.New("boom"), "ignored"); got != "boom" {
+		t.Errorf("firstError = %q, want the transport error", got)
+	}
+	if got := firstError(nil, "ERROR: nope\nsecond line"); got != "ERROR: nope" {
+		t.Errorf("firstError = %q, want the first line of the answer", got)
 	}
 }

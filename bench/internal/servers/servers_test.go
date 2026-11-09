@@ -116,3 +116,15 @@ func TestRegister(t *testing.T) {
 		t.Error("Lookup must report an unknown server")
 	}
 }
+
+// ops sizes a containerised server from its image and reads its memory from its container: a registered server
+// that names neither cannot be measured the same way as the others.
+func TestEveryRegisteredServerNamesItsContainerAndImage(t *testing.T) {
+	target := Target{DSN: "postgres://u:p@localhost:5432/db", URI: "postgres://u:p@pg:5432/db"}
+	for name, f := range registry {
+		spec := f(target)
+		if spec.Container == "" || spec.Image == "" {
+			t.Errorf("%s: container %q, image %q; want both set", name, spec.Container, spec.Image)
+		}
+	}
+}

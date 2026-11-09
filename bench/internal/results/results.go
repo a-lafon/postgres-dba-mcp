@@ -240,12 +240,18 @@ type Ops struct {
 	RSSMB map[string]Measure `json:"rss_mb"`
 	// NativeRSSMB is postgres-dba-mcp's native binary after the same calls (informational).
 	NativeRSSMB Measure            `json:"native_rss_mb"`
-	SizeMB      map[string]Measure `json:"size_mb"`
-	Concurrency struct {
-		Calls   int  `json:"calls"`
-		Errors  int  `json:"errors"`
-		Skipped bool `json:"skipped,omitempty"`
-	} `json:"concurrency"`
+	SizeMB map[string]Measure `json:"size_mb"`
+	// Concurrency is the same measure for every server: N calls at once on one stdio session of one process.
+	Concurrency map[string]Conc `json:"concurrency"`
+}
+
+// Conc is what one server did under N concurrent calls on a single stdio session.
+type Conc struct {
+	Calls   int     `json:"calls"`
+	Errors  int     `json:"errors"`
+	P95MS   float64 `json:"p95_ms"`
+	Note    string  `json:"note,omitempty"`
+	Skipped bool    `json:"skipped,omitempty"`
 }
 
 // NewRunID returns a UTC timestamp run id, YYYYMMDDTHHMMSSZ.

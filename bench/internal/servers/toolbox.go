@@ -80,6 +80,7 @@ func toolboxSpec(name, uri, config string) Spec {
 		Argv:      argv,
 		Cleanup:   func() { _ = exec.Command("docker", "rm", "-f", cname).Run() },
 		Container: cname,
+		Image:     ToolboxImage,
 		Tools:     toolboxTools,
 		// Classify stays nil: the default fits what Toolbox answers. It has no refusal path, so every case is
 		// either a result (executed) or `error processing request: unable to execute query: ERROR: <message>

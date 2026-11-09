@@ -482,12 +482,43 @@ func cmdOps(ctx context.Context, s *session) error {
 			return err
 		}
 	}
-	out, err := ops.Run(ctx, ops.Options{DBA: s.dbaSpec(), Image: servers.DBAImage(containerDSN), Crystal: s.crystalSpec(), Bin: s.bin(), DSN: servers.BenchDSN, Pagila: l.env.Pagila, Log: s.err})
+	others, err := s.opsOthers()
+	if err != nil {
+		return err
+	}
+	out, err := ops.Run(ctx, ops.Options{DBA: s.dbaSpec(), Image: servers.DBAImage(containerDSN), Crystal: s.crystalSpec(),
+		Others: others, Bin: s.bin(), DSN: servers.BenchDSN, Pagila: l.env.Pagila, Log: s.err})
 	if err != nil {
 		return err
 	}
 	out.Env = l.env
 	return results.Save(l.dir, "ops", out)
+}
+
+// opsDefaults are the reference variants of the other servers: ops measures one configuration per server, the one
+// the goal names, because memory and start-up do not change with a tool list.
+var opsDefaults = []string{servers.DBHubRef, servers.Toolbox}
+
+// opsOthers returns the servers ops measures beside postgres-dba-mcp and crystaldba, which it always measures.
+func (s *session) opsOthers() ([]servers.Spec, error) {
+	names := opsDefaults
+	if s.opts.servers != "" {
+		names = strings.Split(s.opts.servers, ",")
+	}
+	var out []servers.Spec
+	for _, name := range names {
+		if name == results.DBA || name == results.Crystal {
+			continue
+		}
+		f, ok := servers.Lookup(name)
+		if !ok {
+			return nil, fmt.Errorf("unknown server %q in --servers", name)
+		}
+		spec := f(benchTarget())
+		spec.Name = name
+		out = append(out, spec)
+	}
+	return out, nil
 }
 
 func cmdReport(_ context.Context, s *session) error {

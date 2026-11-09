@@ -97,6 +97,7 @@ func dbhubSpec(argv []string, name string, tools map[string]string) Spec {
 		Argv:      argv,
 		Cleanup:   func() { _ = exec.Command("docker", "rm", "-f", name).Run() },
 		Container: name,
+		Image:     DBHubImage,
 		Tools:     tools,
 		Classify:  ClassifyDBHub,
 		Truncated: TruncatedDBHub,

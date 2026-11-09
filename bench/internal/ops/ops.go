@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"regexp"
@@ -15,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/a-lafon/postgres-dba-mcp/bench/internal/mcpc"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/scenarios"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
@@ -38,25 +36,29 @@ type Options struct {
 	DBA     servers.Spec // the native binary: cold start, informational memory
 	Image   servers.Spec // the linux image: the memory measure of the target
 	Crystal servers.Spec
-	Bin     string // path of the postgres-dba-mcp binary, for its size
-	DSN     string // connection string of the bench database, for the HTTP server
-	Pagila  bool
-	Log     io.Writer
+	// Others are the other servers measured, each with the same method as crystaldba: a container, started by
+	// `docker run`, read with `docker stats`.
+	Others []servers.Spec
+	Bin    string // path of the postgres-dba-mcp binary, for its size
+	DSN    string // connection string of the bench database, for the HTTP server
+	Pagila bool
+	Log    io.Writer
 }
 
 // Run takes every ops measure. The RSS and concurrency measures need Pagila (they call S02 and S01).
 func Run(ctx context.Context, o Options) (results.Ops, error) {
 	out := results.Ops{
 		ColdStartMS: map[string]results.Measure{}, RSSMB: map[string]results.Measure{}, SizeMB: map[string]results.Measure{},
+		Concurrency: map[string]results.Conc{},
 	}
-	for _, spec := range []servers.Spec{o.DBA, o.Crystal} {
+	for _, spec := range append([]servers.Spec{o.DBA, o.Crystal}, o.Others...) {
 		_, _ = fmt.Fprintf(o.Log, "ops cold start %s\n", spec.Name)
 		ms, err := coldStart(ctx, spec)
 		if err != nil {
 			return out, err
 		}
 		m := results.Measure{Value: ms}
-		if spec.Name == results.Crystal {
+		if spec.Container != "" {
 			m.Note = crystalLabel
 		}
 		out.ColdStartMS[spec.Name] = m
@@ -66,22 +68,34 @@ func Run(ctx context.Context, o Options) (results.Ops, error) {
 		return out, fmt.Errorf("binary size: %w", err)
 	}
 	out.SizeMB[results.DBA] = results.Measure{Value: float64(fi.Size()) / (1 << 20), Note: "binary"}
-	img, err := imageSize(ctx, servers.CrystalImage)
-	if err != nil {
-		return out, err
+	for _, spec := range append([]servers.Spec{o.Crystal}, o.Others...) {
+		img, err := imageSize(ctx, spec.Image)
+		if err != nil {
+			return out, err
+		}
+		out.SizeMB[spec.Name] = results.Measure{Value: img, Note: "image"}
 	}
-	out.SizeMB[results.Crystal] = results.Measure{Value: img, Note: "image"}
 
 	if !o.Pagila {
 		skip := results.Measure{Skipped: true, Note: "needs Pagila"}
-		out.RSSMB[results.DBA], out.RSSMB[results.Crystal], out.NativeRSSMB, out.Concurrency.Skipped = skip, skip, skip, true
+		out.RSSMB[results.DBA], out.RSSMB[results.Crystal], out.NativeRSSMB = skip, skip, skip
+		for _, spec := range append([]servers.Spec{o.DBA, o.Crystal}, o.Others...) {
+			out.Concurrency[spec.Name] = results.Conc{Skipped: true, Note: "needs Pagila"}
+		}
 		return out, nil
 	}
 	// The target reads the image, as shipped to containers and measured like crystaldba; the native binary is informational.
-	for _, m := range []struct {
+	mem := []struct {
 		spec servers.Spec
 		note string
-	}{{o.Image, ImageLabel}, {o.Crystal, ""}} {
+	}{{o.Image, ImageLabel}, {o.Crystal, ""}}
+	for _, spec := range o.Others {
+		mem = append(mem, struct {
+			spec servers.Spec
+			note string
+		}{spec, ""})
+	}
+	for _, m := range mem {
 		_, _ = fmt.Fprintf(o.Log, "ops rss %s\n", m.spec.Name)
 		var samples []float64
 		for i := 0; i < MemSamples; i++ {
@@ -99,10 +113,16 @@ func Run(ctx context.Context, o Options) (results.Ops, error) {
 		return out, err
 	}
 	out.NativeRSSMB = results.Measure{Value: mb, Note: what}
-	_, _ = fmt.Fprintln(o.Log, "ops concurrency")
-	out.Concurrency.Calls = Concurrent
-	out.Concurrency.Errors, err = concurrency(ctx, o)
-	return out, err
+	// postgres-dba-mcp is measured on the image, as the RSS is, and for the same reason: the host build parses
+	// SQL through the WASM libpg_query, whose module compiles on first use (~880 ms, in the background from
+	// start-up) and would be charged to the calls of a session opened the instant the process answered
+	// initialize. The image is the cgo build, and the other servers finish their own start-up before they
+	// answer initialize at all.
+	for _, spec := range append([]servers.Spec{o.Image, o.Crystal}, o.Others...) {
+		_, _ = fmt.Fprintf(o.Log, "ops concurrency %s\n", spec.Name)
+		out.Concurrency[spec.Name] = concurrency(ctx, spec)
+	}
+	return out, nil
 }
 
 // coldStart returns the median, in ms, of ColdStarts times from process start to the initialize response.
@@ -137,8 +157,12 @@ func rss(ctx context.Context, spec servers.Spec) (float64, string, error) {
 		return 0, "", err
 	}
 	defer srv.Close()
+	tool, ok := spec.ToolName("execute_sql")
+	if !ok {
+		return 0, "", fmt.Errorf("%s has no execute_sql tool", spec.Name)
+	}
 	for i := 0; i < RSSCalls; i++ {
-		if _, err := srv.Call(ctx, "execute_sql", map[string]any{"sql": "SELECT * FROM rental"}); err != nil {
+		if _, err := srv.Call(ctx, tool, map[string]any{"sql": "SELECT * FROM rental"}); err != nil {
 			return 0, "", fmt.Errorf("rss call %d on %s: %w", i+1, spec.Name, err)
 		}
 	}
@@ -240,59 +264,53 @@ func imageSize(ctx context.Context, image string) (float64, error) {
 	return n / (1 << 20), nil
 }
 
-// concurrency starts postgres-dba-mcp over streamable HTTP and sends Concurrent S01 calls at once, one session each.
-// It returns the number of calls that failed.
-func concurrency(ctx context.Context, o Options) (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+// concurrency sends Concurrent S01 calls at once on one stdio session of one server process, the same method for
+// every server: one process, one session, N requests in flight. It returns the failures and the p95 latency. A
+// server that cannot answer concurrent requests on one session is a result, not a reason to measure it otherwise.
+func concurrency(ctx context.Context, spec servers.Spec) results.Conc {
+	out := results.Conc{Calls: Concurrent}
+	srv, err := spec.Start(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("find a free port: %w", err)
+		out.Errors, out.Note = Concurrent, "did not start: "+err.Error()
+		return out
 	}
-	port := l.Addr().(*net.TCPAddr).Port
-	_ = l.Close()
-	spec := servers.DBA(o.Bin, o.DSN, "--transport=streamable-http", "--port="+strconv.Itoa(port))
-	cmd := exec.CommandContext(ctx, spec.Argv[0], spec.Argv[1:]...)
-	cmd.Env = append(os.Environ(), spec.Env...)
-	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("start HTTP server: %w", err)
-	}
-	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
-	endpoint := fmt.Sprintf("http://127.0.0.1:%d/mcp", port)
-	if err := waitFor(ctx, endpoint); err != nil {
-		return 0, err
+	defer srv.Close()
+	tool, ok := spec.ToolName("execute_sql")
+	if !ok {
+		return results.Conc{Skipped: true, Note: "no execute_sql tool"}
 	}
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	failed := 0
+	var lat []float64
 	for i := 0; i < Concurrent; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ok := false
-			if c, err := mcpc.ConnectHTTP(ctx, endpoint); err == nil {
-				res, err := c.Call(ctx, "execute_sql", map[string]any{"sql": "SELECT * FROM film LIMIT 10"})
-				ok = err == nil && !res.IsError
-				c.Close()
-			}
-			if !ok {
-				mu.Lock()
-				failed++
-				mu.Unlock()
+			res, err := srv.Call(ctx, tool, map[string]any{"sql": "SELECT * FROM film LIMIT 10"})
+			mu.Lock()
+			defer mu.Unlock()
+			lat = append(lat, float64(res.Latency.Microseconds())/1000)
+			if err != nil || res.IsError {
+				out.Errors++
+				if out.Note == "" {
+					out.Note = firstError(err, res.Text)
+				}
 			}
 		}()
 	}
 	wg.Wait()
-	return failed, nil
+	out.P95MS = scenarios.Percentile(lat, 95)
+	return out
 }
 
-// waitFor polls until the HTTP endpoint accepts an MCP session.
-func waitFor(ctx context.Context, endpoint string) error {
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		if c, err := mcpc.ConnectHTTP(ctx, endpoint); err == nil {
-			c.Close()
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
+// firstError returns a short reason for the first failed call.
+func firstError(err error, text string) string {
+	if err != nil {
+		return err.Error()
 	}
-	return fmt.Errorf("HTTP server at %s did not come up", endpoint)
+	line, _, _ := strings.Cut(text, "\n")
+	if len(line) > 160 {
+		line = line[:160]
+	}
+	return line
 }
