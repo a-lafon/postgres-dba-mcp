@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.a-lafon/postgres-dba-mcp",
   "title": "Postgres DBA MCP",
-  "description": "Bounded, read-only PostgreSQL access for AI assistants: nine DBA tools, compact CSV output",
+  "description": "Bounded, read-only PostgreSQL access for AI assistants: ten DBA tools, compact CSV output",
   "repository": {
     "url": "https://github.com/a-lafon/postgres-dba-mcp",
     "source": "github"
