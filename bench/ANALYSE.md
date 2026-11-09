@@ -3,9 +3,10 @@
 Source: run `20261108T222200Z`, 2026-11-08, postgres-dba-mcp `7afada9`, crystaldba 0.3.0
 `sha256:dbbd3468…`, DBHub 1.6.0 `sha256:ccb6afc0…`, MCP Toolbox 1.16.0 `sha256:190bd9d9…`,
 PostgreSQL 17.11, scale 1 with Pagila, every server as the read-only role `bench_ro`.
-Raw files: `bench/results/20261108T222200Z/` (`n1.json`, `n2.json`, `security.json`, `session.json`,
-`ops.json`, and the per-tool breakdowns `dba.json`, `dbhub.json`, `toolbox.json`).
-Every figure below names the file it comes from.
+The run writes `n1.json`, `n2.json`, `security.json`, `session.json`, `ops.json` and the per-tool
+breakdowns `dba.json`, `dbhub.json` and `toolbox.json` under `bench/results/<run>/`, which is not
+versioned. Every figure below names the file it comes from, and the commands that rebuild them are in
+the comparison section of `BENCHMARK.md`.
 
 **Counter.** Tokens are the harness estimate `ceil(bytes/4)`; `--tokens=claude` was not used.
 JSON tokenises more densely than CSV, so the estimate understates DBHub and Toolbox more than it
