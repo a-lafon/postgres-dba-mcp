@@ -1,0 +1,125 @@
+# A subset of the `--prebuilt postgres` tools of MCP Toolbox 1.16.0, cut down to 10 tools, the number
+# postgres-dba-mcp exposes. Every entry is copied verbatim from the prebuilt configuration of that version
+# (internal/prebuiltconfigs/tools/postgres.yaml), so the only thing this variant changes is which tools are served.
+#
+# One Toolbox tool is kept per postgres-dba-mcp tool, the closest in purpose:
+#   execute_sql            <- execute_sql
+#   get_query_plan         <- explain_query (no ANALYZE, no hypothetical index)
+#   list_schemas           <- list_schemas
+#   list_tables            <- list_objects and get_object_details (Toolbox has one tool for both)
+#   list_query_stats       <- get_top_queries
+#   list_locks             <- analyze_locks
+#   list_indexes           <- analyze_query_indexes / analyze_workload_indexes (Toolbox advises no index; it
+#                             lists the existing ones, unused ones included)
+#   list_invalid_indexes   \
+#   list_top_bloated_tables | <- analyze_db_health, which Toolbox splits over several tools; these three are the
+#   database_overview      /    index, vacuum and connection checks of its `health` toolset
+#
+# Toolbox serves the toolset named `default`, which holds every tool of the file, so a file is how a subset is
+# picked over stdio: --prebuilt serves all 29, and the prebuilt toolsets (data, monitor, health, view-config,
+# replication) can only be picked by URL path in HTTP mode.
+kind: source
+name: postgresql-source
+type: postgres
+host: ${POSTGRES_HOST:localhost}
+port: ${POSTGRES_PORT:5432}
+database: ${POSTGRES_DATABASE}
+user: ${POSTGRES_USER}
+password: ${POSTGRES_PASSWORD}
+queryParams: ${POSTGRES_QUERY_PARAMS:}
+---
+kind: tool
+name: execute_sql
+type: postgres-execute-sql
+source: postgresql-source
+description: Use this tool to execute a single SQL statement.
+---
+kind: tool
+name: list_tables
+type: postgres-list-tables
+source: postgresql-source
+description: Lists detailed schema information (object type, columns, constraints, indexes, triggers, owner, comment) as JSON for user-created tables (ordinary or partitioned). Filters by a comma-separated list of names. If names are omitted, lists all tables in user schemas.
+---
+kind: tool
+name: list_locks
+type: postgres-list-locks
+source: postgresql-source
+description: Identifies all locks held by active processes showing the process ID, user, query text, and an aggregated list of all transactions and specific locks (relation, mode, grant status) associated with each process.
+---
+kind: tool
+name: list_top_bloated_tables
+type: postgres-sql
+source: postgresql-source
+description: |
+  List the top tables by dead-tuple (approximate bloat signal), returning schema, table, live/dead tuples, percentage, and last vacuum/analyze times.
+statement: |
+  SELECT
+      schemaname AS schema_name,
+      relname AS relation_name,
+      n_live_tup AS live_tuples,
+      n_dead_tup AS dead_tuples,
+      TRUNC((n_dead_tup::NUMERIC / NULLIF(n_live_tup + n_dead_tup, 0)) * 100, 2) AS dead_tuple_percentage,
+      last_vacuum,
+      last_autovacuum,
+      last_analyze,
+      last_autoanalyze
+  FROM pg_stat_user_tables
+  ORDER BY n_dead_tup DESC
+  LIMIT COALESCE($1::int, 50);
+parameters:
+- name: limit
+  description: The maximum number of results to return.
+  type: integer
+  default: 50
+---
+kind: tool
+name: list_invalid_indexes
+type: postgres-sql
+source: postgresql-source
+description: Lists all invalid PostgreSQL indexes which are taking up disk space but are unusable by the query planner. Typically created by failed CREATE INDEX CONCURRENTLY operations.
+statement: |
+  SELECT
+      nspname AS schema_name,
+      indexrelid::regclass AS index_name,
+      indrelid::regclass AS table_name,
+      pg_size_pretty(pg_total_relation_size(indexrelid)) AS index_size,
+      indisready,
+      indisvalid,
+      pg_get_indexdef(pg_class.oid) AS index_def
+  FROM pg_index
+  JOIN pg_class ON pg_class.oid = pg_index.indexrelid
+  JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+  WHERE indisvalid = FALSE;
+---
+kind: tool
+name: get_query_plan
+type: postgres-sql
+source: postgresql-source
+description: Generate a PostgreSQL EXPLAIN plan in JSON format for a single SQL statement—without executing it. This returns the optimizer's estimated plan, costs, and rows (no ANALYZE, no extra options). Do not use this tool in production as it is prone to SQL injection risks.
+statement: |
+  EXPLAIN (FORMAT JSON) {{.query}};
+templateParameters:
+- name: query
+  type: string
+  description: The SQL statement for which you want to generate plan (omit the EXPLAIN keyword).
+  required: true
+---
+kind: tool
+name: list_schemas
+type: postgres-list-schemas
+source: postgresql-source
+---
+kind: tool
+name: database_overview
+type: postgres-database-overview
+source: postgresql-source
+---
+kind: tool
+name: list_indexes
+type: postgres-list-indexes
+source: postgresql-source
+---
+kind: tool
+name: list_query_stats
+type: postgres-list-query-stats
+source: postgresql-source

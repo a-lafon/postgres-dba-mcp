@@ -23,18 +23,10 @@ import (
 const (
 	toolDescription = "Explains the execution plan for a SQL query, showing how the database will execute it and provides detailed cost estimates. " +
 		"Queries with $n parameters get a generic plan."
-	analyzeDescription = "When True, actually runs the query to show real execution statistics instead of estimates. " +
-		"Takes longer but provides more accurate information."
-	hypoDescription = `A list of hypothetical indexes to simulate. Each index must be a dictionary with these keys:
-    - 'table': The table name to add the index to (e.g., 'users')
-    - 'columns': List of column names to include in the index (e.g., ['email'] or ['last_name', 'first_name'])
-    - 'using': Optional index method (default: 'btree', other options include 'hash', 'gist', etc.)
-
-Examples: [
-    {"table": "users", "columns": ["email"], "using": "btree"},
-    {"table": "orders", "columns": ["user_id", "created_at"]}
-]
-If there is no hypothetical index, you can pass an empty list.`
+	analyzeDescription = "Runs the query and reports its real statistics instead of estimates. Slower."
+	// The schema types the index itself; the description carries only what it cannot say.
+	hypoDescription = `Indexes to simulate without creating them, e.g. ` +
+		`[{"table":"orders","columns":["user_id","created_at"]}]. using is the index method, btree by default.`
 	verboseDescription = "When true, returns the full PostgreSQL text plan instead of the summary."
 )
 

@@ -22,8 +22,8 @@ commands:
   up                         start the bench databases (docker compose up) and build the server binary
   load [--scale=<f>] [--no-pagila]
                              load the data set and replay the workload
-  n1 | n2 | security | n3 | ops
-                             run one level
+  n1 | n2 | security | n3 | ops | session
+                             run one level (session: the long-session context measure, no model call)
   n3 --regrade --run=<id>    grade again the stored n3 transcripts of a run, without calling claude
   n2 --recheck --run=<id>    grade again the stored n2 outputs of a run, without calling any server or claude
   n3 --tasks=core|extra|all  the six tasks of the verdict (default), the schema and index-tuning ones, or both
@@ -34,12 +34,14 @@ commands:
   judge --calibration=<file> compare the filled calibration sheet with the judge's verdicts (no call)
   report [--fail-on-blocking]
                              write report.md from the latest run
+  compare [--run=<id>]       write compare.md: one column per measured server, from the raw results
   all                        up, load, n1, n2, security, ops, then report (never n3)
 
 flags:
   --run=<id>                 run id of the results folder (default: a new UTC timestamp; report: the latest run)
   --tokens=claude            count tokens through claude -p, without any API key (n1, n2, all)
   --with-pgedge              also measure pgEdge on S01-S06 (n2)
+  --servers=<a,b>            measure these servers only (n1, n2, security); default dba,crystal
 `
 
 // errUsage marks an invocation error: usage text, exit status 2.
@@ -59,6 +61,7 @@ type options struct {
 	scale       float64
 	noPagila    bool
 	withPgEdge  bool
+	servers     string
 	failOnBlk   bool
 	regrade     bool
 	recheck     bool
@@ -82,6 +85,7 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	fs.Float64Var(&o.scale, "scale", 1, "")
 	fs.BoolVar(&o.noPagila, "no-pagila", false, "")
 	fs.BoolVar(&o.withPgEdge, "with-pgedge", false, "")
+	fs.StringVar(&o.servers, "servers", "", "")
 	fs.BoolVar(&o.failOnBlk, "fail-on-blocking", false, "")
 	fs.BoolVar(&o.regrade, "regrade", false, "")
 	fs.BoolVar(&o.recheck, "recheck", false, "")
@@ -109,9 +113,11 @@ var commands = map[string]func(context.Context, *session) error{
 	"n2":       cmdN2,
 	"security": cmdSecurity,
 	"n3":       cmdN3,
+	"session":  cmdSession,
 	"judge":    cmdJudge,
 	"ops":      cmdOps,
 	"report":   cmdReport,
+	"compare":  cmdCompare,
 	"all":      cmdAll,
 }
 
@@ -158,7 +164,7 @@ func newSession(o options, getenv func(string) string, out, errw io.Writer) (*se
 		return nil, fmt.Errorf("run the bench from the bench folder (no compose.yml in %s)", dir)
 	}
 	s := &session{opts: o, getenv: getenv, out: out, err: errw, benchDir: dir, repoDir: filepath.Dir(dir), runID: o.runID}
-	if s.runID == "" && o.command != "report" {
+	if s.runID == "" && o.command != "report" && o.command != "compare" {
 		s.runID = results.NewRunID()
 	}
 	return s, nil

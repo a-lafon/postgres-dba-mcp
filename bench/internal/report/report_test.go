@@ -44,7 +44,7 @@ func fixtureInputs() Inputs {
 		Sec: &results.Security{Env: env, Attacks: map[string][]results.SecurityCase{
 			results.DBA:     {{ID: "write-insert", Class: results.ClassRefused}},
 			results.Crystal: {{ID: "fn-lo-from", Class: results.ClassExecuted, SideEffect: "large objects +1"}},
-		}, Legit: []results.SecurityCase{{ID: "simple-select", Class: results.ClassExecuted}}},
+		}, Legit: map[string][]results.SecurityCase{results.DBA: {{ID: "simple-select", Class: results.ClassExecuted}}}},
 		N3: &results.N3{Env: env, Runs: []results.N3Run{run(results.DBA, true, 590, 3), run(results.Crystal, true, 1000, 3)}},
 	}
 }
@@ -63,7 +63,7 @@ func TestVerdicts(t *testing.T) {
 			in.Sec.Attacks[results.DBA][0].SideEffect = "large objects +1"
 		}, NoGo, ""},
 		{"attack executed", func(in *Inputs) { in.Sec.Attacks[results.DBA][0].Class = results.ClassExecuted }, NoGo, ""},
-		{"false refusal on legit", func(in *Inputs) { in.Sec.Legit[0].Class = results.ClassRefused }, NoGo, ""},
+		{"false refusal on legit", func(in *Inputs) { in.Sec.Legit[results.DBA][0].Class = results.ClassRefused }, NoGo, ""},
 		{"estimated tokens block GO", func(in *Inputs) { in.N2.Env.TokenCounter = results.CounterEstimate }, Inconclusive, "median tokens S01-S06"},
 		{"claude -p tokens are verified", func(in *Inputs) { in.N2.Env.TokenCounter = results.CounterClaude }, Go, ""},
 		{"estimated cell blocks GO", func(in *Inputs) {
@@ -254,5 +254,26 @@ func TestAdviceMatches(t *testing.T) {
 				t.Errorf("AdviceMatches = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// A tool the server does not have is counted apart: it must leave the correctness verdict and the token medians
+// alone, where a wrong answer would fail the verdict.
+func TestNoToolCellIsNotAWrongAnswer(t *testing.T) {
+	in := fixtureInputs()
+	missing := results.N2Cell{Status: results.StatusNoTool}
+	in.N2.Rows = append(in.N2.Rows, results.N2Row{ID: "S19b", Tool: "analyze_query_indexes",
+		Cells: map[string]results.N2Cell{results.DBA: missing, results.Crystal: cellOK(10)}})
+	for _, c := range Criteria(in) {
+		if c.Key == "n2-correct" && c.Met != Yes {
+			t.Errorf("correctness verdict = %q (%s), want it unchanged by a missing tool", c.Met, c.Result)
+		}
+	}
+	md, v := Render(in)
+	if v.Name != Go {
+		t.Errorf("verdict %s, want %s", v.Name, Go)
+	}
+	if !strings.Contains(md, "- no analyze_query_indexes tool: S19b on dba") {
+		t.Error("the report does not list the missing tool among the skipped items")
 	}
 }

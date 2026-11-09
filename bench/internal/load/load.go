@@ -132,7 +132,7 @@ func Run(ctx context.Context, o Options) error {
 		return o.compose(ctx, bytes.NewReader(sql), "exec", "-T", "pg", "psql", "-q", "-U", "postgres", "-d", "bench",
 			"-v", "ON_ERROR_STOP=1", "-v", "scale="+strconv.FormatFloat(o.Scale, 'f', -1, 64), "-f", "-")
 	}
-	steps := []string{"00_roles.sql", "10_base.sql", "pagila", "20_traps.sql", "30_docs.sql", "99_grants.sql"}
+	steps := []string{"00_roles.sql", "10_base.sql", "pagila", "20_traps.sql", "30_docs.sql", "40_vector.sql", "99_grants.sql"}
 	for _, name := range steps {
 		if name == "pagila" {
 			if o.Pagila {

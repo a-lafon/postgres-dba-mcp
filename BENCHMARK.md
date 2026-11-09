@@ -2,6 +2,8 @@
 
 postgres-dba-mcp against [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0, the latest release (May 2025). Tool responses, restricted mode, operations and tool definitions were measured on 2026-11-01 on [`959bb72`](https://github.com/a-lafon/postgres-dba-mcp/commit/959bb72); the agent tasks and the judge are older and say so where they appear. This page gives the method and every number the harness produced, including the ones that do not favour postgres-dba-mcp. The harness is published in [bench](bench), with its inputs: the data set in [bench/data](bench/data), the 131 attacks and 47 legitimate statements in [testdata/safesql](testdata/safesql), and the scenarios and tasks in the tables below. `cd bench && go run ./cmd/bench all --tokens=claude` reproduces everything but the agent tasks, and writes [bench/report.md](bench/report.md), which is the run behind this page as the harness wrote it.
 
+A second comparison, against [DBHub](https://github.com/bytebase/dbhub) 1.6.0 and [MCP Toolbox](https://github.com/googleapis/genai-toolbox) 1.16.0 as well as crystaldba, ran on 2026-11-08 on [`7afada9`](https://github.com/a-lafon/postgres-dba-mcp/commit/7afada9). It has its own section below, it counts tokens with the harness estimate rather than a model, and its numbers are not comparable with the ones above.
+
 ## At a glance
 
 <picture>
@@ -148,12 +150,159 @@ Every statement is sent to `execute_sql` in restricted mode. An attack counts as
 | Memory after 100 calls of S02, Linux container, `docker stats`, median of 3 containers | 9.3 MB (samples 24.6, 9.3, 8.7) | 246.3 MB (246.3, 268.5, 246.0) |
 | Cold start to the `initialize` answer, median of 20 | 12.7 ms (binary on the Linux host) | 2337 ms (includes `docker run`) |
 | Size | 22.9 MB static binary | 395 MB image (linux/amd64) |
-| 50 concurrent S01 over HTTP | 0 errors | not measured |
+| 50 concurrent S01 calls on one stdio session, p95 (run 20261108T222200Z) | 0 errors in 50 calls, 29.0 ms | 0 errors in 50 calls, 100.3 ms |
 
+- **Concurrency is measured on a later run** than the rest of this table, 2026-11-08 on [`7afada9`](https://github.com/a-lafon/postgres-dba-mcp/commit/7afada9), because the method changed: one process, one stdio session, 50 `execute_sql` calls in flight at once, counting failures and the p95. The earlier measure sent 50 calls to postgres-dba-mcp alone over streamable HTTP and compared nothing. Every measured server now has a figure; the four of them are in the table of the section below. postgres-dba-mcp is measured on its Linux image, like its memory, because the host build compiles its WASM SQL parser on first use and all 50 calls would wait on that compilation.
 - **Memory outlier.** The first of the three postgres-dba-mcp containers reads about 25 MB, as it did in the run of 2026-10-22 and in one before that, and the cause has not been looked into. The median is what the table reports.
 - **Memory moved from 15.6 MB to 9.3 MB** between 2026-10-22 and 2026-11-01. `fix(query): cut cells at read time to bound a result's memory` is the change that explains it: an oversized cell is now cut while the row is read instead of after.
 - **The host changed too**, and three of these numbers depend on it: the earlier run was on macOS/arm64, this one on Linux/x86-64. Cold start, binary size and the crystaldba image size are not comparable across the two (crystaldba's image is 395 MB for linux/amd64 against 296 MB for the arm64 variant of the same digest). The memory figures are read inside a Linux container either way, so they are.
 - **Build without a C compiler** (`go install`). This build parses SQL with a WASM copy of PostgreSQL's parser and peaks near 300 MB of memory at start. The release binaries and the image use the native parser.
+
+## Against DBHub 1.6.0 and MCP Toolbox 1.16.0
+
+A second comparison, on the same harness, the same database and the same read-only role, run on 2026-11-08 on [`7afada9`](https://github.com/a-lafon/postgres-dba-mcp/commit/7afada9). It adds one scenario, S22, on a `vector(1536)` column. [bench/compare.md](bench/compare.md) is the table the harness wrote from that run. The reading of the figures, where postgres-dba-mcp loses and what was decided from it, is in [bench/ANALYSE.md](bench/ANALYSE.md).
+
+**Reproducing it.** The raw JSON stays under `bench/results/<run>/`, which is not versioned, as for every other run on this page. `all` does not cover the other servers, so the run is these commands, from `bench`, after `up` and `load`:
+
+```sh
+cd bench
+ALL=dba,crystal,dbhub,dbhub-rows100,dbhub-4tools,dbhub-default,toolbox,toolbox-subset
+SEC=dba,crystal,dbhub,dbhub-rows100,dbhub-4tools,toolbox,toolbox-subset
+RUN=$(date -u +%Y%m%dT%H%M%SZ)
+go run ./cmd/bench up && go run ./cmd/bench load
+go run ./cmd/bench n1       --run=$RUN --servers=$ALL
+go run ./cmd/bench n2       --run=$RUN --servers=$SEC
+go run ./cmd/bench security --run=$RUN --servers=$SEC
+go run ./cmd/bench session  --run=$RUN --servers=$SEC
+go run ./cmd/bench ops      --run=$RUN --servers=dbhub,toolbox
+go run ./cmd/toolmeta       --run=$RUN --servers=dba --out=dba
+go run ./cmd/toolmeta       --run=$RUN --servers=dbhub,dbhub-rows100,dbhub-4tools,dbhub-default --out=dbhub
+go run ./cmd/toolboxmeta    --run=$RUN
+go run ./cmd/bench report   --run=$RUN && go run ./cmd/bench compare --run=$RUN
+```
+
+`dbhub-default` is left out of `$SEC` on purpose: it has no read-only guard, so replaying the 131 attacks through it would write to the database. The pass takes about 1 h 20 at scale 1, and costs nothing: no model is called.
+
+**This section counts tokens differently from the rest of the page.** Everything above is `claude -p` token counts; here they are the harness estimate `ceil(bytes/4)`, because counting eight server variants with a model costs money and changes no conclusion. JSON tokenises more densely than CSV, so the estimate understates DBHub and Toolbox more than it understates postgres-dba-mcp's CSV: the bias runs against postgres-dba-mcp. Do not compare a number from this section with one from the sections above.
+
+**Versions and digests.** Every image is pinned by digest, no `latest` anywhere.
+
+| | |
+|---|---|
+| postgres-dba-mcp | built from source at `7afada9`, `--access-mode=restricted`, default limits (`--max-bytes` 32768) |
+| crystaldba | `crystaldba/postgres-mcp@sha256:dbbd346860d29f1543e991f30f3284bf4ab5f096d049ecc3426528f20b1b6e6b` (0.3.0), `--access-mode=restricted` |
+| DBHub | `bytebase/dbhub@sha256:ccb6afc0bc1f05c143e15c3c927eb11e8103d49b06947900c33e337f2453f5e3`, which reports `DBHub MCP Server 1.6.0` |
+| MCP Toolbox | `us-central1-docker.pkg.dev/database-toolbox/toolbox/toolbox@sha256:190bd9d9b3cfe81bed19470bef8f9991d64c113313ec499234e0dd38ca11a841`, which reports `toolbox version 1.16.0+container.release.linux.amd64.06ea49d` |
+| Database | PostgreSQL 17.11, scale 1 with Pagila, plus an `embeddings` table with a pgvector `vector(1536)` column (`bench/data/40_vector.sql`) |
+| Role | every server connects as the same read-only role `bench_ro` |
+| Dollars | claude-sonnet-5-5 input at $2.00 per million tokens, priced 2026-10-06 (`bench/internal/tokens/price.go`); only input is priced, since every figure measured here is what the server puts into the model's context |
+
+**Configurations.** 1.6.0 removed DBHub's `--readonly` and `--max-rows` flags: read-only mode and the row cap are now per-tool fields of a `dbhub.toml`, which the harness writes inside the container. A source with no `[[tools]]` block gets two default tools, so a configuration that keeps the default set must still name them.
+
+| Variant | Tools | Configuration |
+|---|---|---|
+| `dbhub` | 2 | `readonly = true`, `max_rows = 1000` on `execute_sql`, plus `search_objects`; the reference |
+| `dbhub-rows100` | 2 | the same with `max_rows = 100` |
+| `dbhub-4tools` | 4 | the reference plus `explain_sql` and `health_check` |
+| `dbhub-default` | 2 | `--dsn` alone, no `dbhub.toml`: writes allowed, no row cap |
+| `toolbox` | 29 | `--prebuilt postgres --stdio --disable-version-check` |
+| `toolbox-subset` | 10 | the same definitions cut to 10, the number postgres-dba-mcp exposes, from `bench/internal/servers/toolbox-subset.yaml`, copied entry by entry from the prebuilt configuration of 1.16.0; its header says which tool was kept for which postgres-dba-mcp tool |
+
+`dbhub-default` was measured on tool definitions only. It has no read-only guard, so replaying the 131 attacks through it would really write to the database.
+
+**Unmapped tools.** A tool the server does not have is counted apart, never as a wrong answer. DBHub's `search_objects` covers listing and describing objects, but under its own arguments (`object_type`, `pattern`, `schema`, `table`, `detail_level`, `limit`), which the harness cannot send in place of `schema_name` / `object_name`, so S08 to S11 read `no tool`; its `health_check` reports pool and cache metrics, not the traps S17 and S18 grade; it has nothing for `get_top_queries` or `analyze_query_indexes`. Toolbox's `get_query_plan` names its required parameter `query`, not `sql`, and has neither ANALYZE nor hypothetical indexes; it has no health tool, and it recommends no index. Its `list_tables` answers both `list_objects` and `get_object_details`, takes no `schema_name`, `object_type` or `object_name`, and silently ignores arguments it does not know, so S09, S10 and S11 all return every user table in full.
+
+### Total tokens per task
+
+One task is one request: the tool definitions the client sends plus the one answer it gets back, the median over the six scenarios every server answered (S01, S04, S05, S06, S07, S22). The session column is a fixed ten-turn investigation where definitions are paid once and every answer accumulates; a server without the right tool runs the same fallback SQL as every other server without it.
+
+| Server | Definitions | Median answer | One task | $ one task | Ten-turn session | $ session |
+|---|---|---|---|---|---|---|
+| postgres-dba-mcp | 1132 | 309 | **1441** | $0.0029 | **2679** | $0.0054 |
+| crystaldba 0.3.0 | 1225 | 844 | 2069 | $0.0041 | 5881 | $0.0118 |
+| DBHub 1.6.0 | 296 | 1131 | 1427 | $0.0029 | 6077 | $0.0122 |
+| DBHub, 4 tools | 431 | 1131 | 1562 | $0.0031 | 6152 | $0.0123 |
+| DBHub, `max_rows` 100 | 296 | 1131 | 1427 | $0.0029 | 6077 | $0.0122 |
+| DBHub, default config | 276 | not measured | | | | |
+| Toolbox 1.16.0 | 4559 | 1376 | 5935 | $0.0119 | 86897 | $0.1738 |
+| Toolbox, 10 tools | 1243 | 1376 | 2619 | $0.0052 | 83581 | $0.1672 |
+
+- **On a single request, DBHub wins by 14 tokens**, 1427 against 1441, while answering 8 of the 22 scenarios against our 22. Its two tool definitions cost 296 where our ten cost 1132.
+- **From the second answer of a session on, the order reverses**, because definitions are paid once and answers accumulate. Computed from the medians above: two answers give 1132 + 2×309 = 1750 against 296 + 2×1131 = 2558. The measured ten-turn session reads 2679 against 6077.
+- **`deferred`**, the tool names plus the server instructions, which is what a client with tool search loads at session start: postgres-dba-mcp 223, crystaldba 38, DBHub 7 (13 with four tools), Toolbox 136 (39 for the subset). This is the one definition figure where postgres-dba-mcp is last of the eight.
+
+### Tool responses (22 scenarios)
+
+Response tokens. `no tool` means the server has no tool the scenario can call.
+
+| ID | Tool | dba | crystal | dbhub | dbhub-4tools | dbhub-rows100 | toolbox | toolbox-subset |
+|---|---|---|---|---|---|---|---|---|
+| S01 | execute_sql | 581 | 1569 | 1986 | 1986 | 1986 | 2672 | 2672 |
+| S02 | execute_sql | 2111 | failed (oversized) | 76425 | 76425 | 7670 | 2519761 | 2519761 |
+| S03 | execute_sql | 1969 | failed (oversized) | 65349 | 65349 | 6585 | failed (oversized) | failed (oversized) |
+| S04 | execute_sql | 1154 | 100183 | 100606 | 100606 | 100606 | 100153 | 100153 |
+| S05 | execute_sql | 36 | 120 | 276 | 276 | 276 | 80 | 80 |
+| S06 | execute_sql | 37 | 87 | 233 | 233 | 233 | 64 | 64 |
+| S07 | execute_sql | 28 | 29 | 24 | 24 | 24 | 26 | 26 |
+| S08 | list_schemas | 41 | 93 | no tool | no tool | no tool | 78 | 78 |
+| S09 | list_objects | 156 | 1336 | no tool | no tool | no tool | 40030 | 40030 |
+| S10 | get_object_details | 246 | 323 | no tool | no tool | no tool | 40030 | 40030 |
+| S11 | get_object_details | 220 | 1259 | no tool | no tool | no tool | 40030 | 40030 |
+| S12 | explain_query | 63 | 63 | no tool | 191 | no tool | no tool | no tool |
+| S13 | explain_query | 84 | 25 | no tool | 191 | no tool | no tool | no tool |
+| S14 | explain_query | 57 | failed (error) | no tool | 177 | no tool | no tool | no tool |
+| S15 | get_top_queries | 314 | 509 | no tool | no tool | no tool | 786 | 786 |
+| S16 | get_top_queries | 530 | 2635 | no tool | no tool | no tool | 10223 | 10226 |
+| S17 | analyze_db_health | 359 | 1400 | no tool | no tool | no tool | no tool | no tool |
+| S18 | analyze_db_health | 250 | 1226 | no tool | no tool | no tool | no tool | no tool |
+| S19 | analyze_query_indexes | 53 | 1991 | no tool | no tool | no tool | no tool | no tool |
+| S20 | analyze_query_indexes | 35 | 250 | no tool | no tool | no tool | no tool | no tool |
+| S21 | explain_query | 62 | 25 | no tool | 191 | no tool | no tool | no tool |
+| S22 | execute_sql | 772 | 49065 | 49322 | 49322 | 49322 | 49038 | 49038 |
+
+| Server | Median (6 common) | Answered | Correct | No tool | Failed |
+|---|---|---|---|---|---|
+| postgres-dba-mcp | 309 | 22 | 22/22 | 0 | 0 |
+| crystaldba 0.3.0 | 844 | 19 | 17/19 | 0 | 3 |
+| DBHub 1.6.0 | 1131 | 8 | 7/8 | 14 | 0 |
+| DBHub, 4 tools | 1131 | 12 | 9/12 | 10 | 0 |
+| DBHub, `max_rows` 100 | 1131 | 8 | 7/8 | 14 | 0 |
+| Toolbox 1.16.0 | 1376 | 13 | 11/13 | 8 | 1 |
+| Toolbox, 10 tools | 1376 | 13 | 11/13 | 8 | 1 |
+
+- **S04, 20 kB jsonb cells.** postgres-dba-mcp 1154 against 100153 to 100606 for every other server. It is also the only scenario the other three answer incorrectly: none of them shortens a cell, so the grader reads `truncation missing`.
+- **S02 and S03, unbounded results.** postgres-dba-mcp cuts at 32768 bytes and says so in the footer. DBHub returns 76425 and 65349 tokens at `max_rows = 1000`, 7670 and 6585 at 100. Toolbox returns 2519761 tokens on S02 without announcing a cut, which the grader counts as incorrect, and fails S03. crystaldba fails both.
+- **S09 to S11, exploration.** Toolbox returns the same 40030 tokens for all three, because `list_tables` is its only exploration tool and ignores the arguments the scenario sends. postgres-dba-mcp: 156, 246, 220.
+- **S22, a `vector(1536)` column.** postgres-dba-mcp 772 against 49038 to 49322, because a vector cell is summarised as `[vector: N dims]` rather than cut at 200 characters.
+- **Where postgres-dba-mcp is the more expensive.** Three scenarios of 22: S07, an error with its SQLSTATE and hint, 28 against DBHub's 24 and Toolbox's 26; S13 and S21, the two plans that print both costs and the hypothetical index used, 84 and 62 against crystaldba's 25.
+
+### Restricted mode (131 attacks, 47 legitimate statements)
+
+Every statement goes to `execute_sql`. An attack counts as executed when it returns a result; its side effects are checked in the database after each call.
+
+| Server | Refused | Failed at execution | Executed | With a side effect | False refusals of 47 |
+|---|---|---|---|---|---|
+| postgres-dba-mcp | **131** | 0 | 0 | 0 | 0 |
+| crystaldba 0.3.0 | 106 | 15 | 10 | 1 | 4 |
+| DBHub 1.6.0 | 80 | 40 | 11 | 5 | 3 |
+| Toolbox 1.16.0 | 0 | 93 | 38 | 8 | 0 |
+
+The three DBHub variants with a `dbhub.toml` score identically, and so do the two Toolbox variants: read-only mode is a property of the tool, not of the tool set.
+
+- **DBHub refuses by keyword, before the database is touched** (`READONLY_VIOLATION`); the other 51 cases reach PostgreSQL, where `bench_ro` stops 40 of them and 11 succeed. Its 5 side effects are three advisory locks still held and two notifications delivered.
+- **Toolbox has no read-only mode** for a self-hosted PostgreSQL: it refuses nothing, and the 93 it does not execute are stopped by `bench_ro` lacking the right. Its 8 side effects are one large object created, three advisory locks still held and four notifications delivered. `fn-dynsql-lateral` (`ts_stat` inside a `LATERAL`) kills the Toolbox process.
+- **DBHub's keyword filter refuses legitimate SQL**: `TABLE accounts`, a `VALUES` list and a statement with a trailing semicolon and comment. crystaldba refuses four, including `EXPLAIN (ANALYZE, BUFFERS)`, which it builds itself. postgres-dba-mcp and Toolbox refuse none.
+
+### Operations
+
+| Server | Cold start | Memory after 100 S02 calls | Binary / image | 50 concurrent calls on one stdio session |
+|---|---|---|---|---|
+| postgres-dba-mcp | 5.9 ms | 9.7 MB | 22.9 MB binary | 0 errors, p95 29.0 ms |
+| crystaldba 0.3.0 | 1352.0 ms | 247.9 MB | 395.0 MB image | 0 errors, p95 100.3 ms |
+| DBHub 1.6.0 | 732.6 ms | 127.1 MB | 344.8 MB image | 0 errors, p95 60.1 ms |
+| Toolbox 1.16.0 | 199.5 ms | 89.6 MB | 422.5 MB image | 0 errors, p95 25.4 ms |
+
+Cold start is the median of 20 and includes `docker run` for the three containers; postgres-dba-mcp is the native binary there. Memory is `docker stats` inside a Linux container, median of 3 containers. Concurrency is one method for every server: one process, one stdio session, 50 `execute_sql` calls in flight at once. **Toolbox is faster than postgres-dba-mcp on that p95**, 25.4 ms against 29.0 ms.
 
 ## Agent tasks (9 tasks × 3 runs per server)
 

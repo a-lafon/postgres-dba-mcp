@@ -1,6 +1,8 @@
 # Bench databases. `pg` holds the bench data set (port 55433); `fixture` is a copy of the test fixture used by the
 # security replay (port 55434). The repository's own fixture (port 55432) is never touched.
-name: bench
+# BENCH_PROJECT, BENCH_PG_PORT and BENCH_FIXTURE_PORT move the whole harness aside so that a second one runs on the
+# same machine; internal/servers reads the same three variables for its DSNs and for the network name.
+name: ${BENCH_PROJECT:-bench}
 
 services:
   pg:
@@ -19,7 +21,7 @@ services:
       POSTGRES_DB: bench
       PGDATA: /var/lib/postgresql/data
     ports:
-      - "127.0.0.1:55433:5432"
+      - "127.0.0.1:${BENCH_PG_PORT:-55433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     shm_size: 256mb
@@ -48,7 +50,7 @@ services:
       POSTGRES_DB: pgdba
       PGDATA: /var/lib/postgresql/data
     ports:
-      - "127.0.0.1:55434:5432"
+      - "127.0.0.1:${BENCH_FIXTURE_PORT:-55434}:5432"
     tmpfs:
       - /var/lib/postgresql/data
     volumes:

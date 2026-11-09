@@ -38,6 +38,16 @@ Against crystaldba/postgres-mcp 0.3.0 on the same PostgreSQL 17 database and the
 
 The other side: the tool definitions are 39 % larger (2732 tokens for ten tools against 1962 for crystaldba's nine), and the tokens of a whole agent task are comparable. Drop `locks` from `--tools` to get the 0.3.0 tool set exactly.
 
+Against [DBHub](https://github.com/bytebase/dbhub) 1.6.0 and [MCP Toolbox](https://github.com/googleapis/genai-toolbox) 1.16.0 as well, on the same database and role, measured on [`7afada9`](https://github.com/a-lafon/postgres-dba-mcp/commit/7afada9) on 2026-11-08. Tokens here are the harness estimate `ceil(bytes/4)`, which understates JSON more than CSV and so runs against postgres-dba-mcp:
+
+- **Total tokens per task**, tool definitions plus one answer, median of the 6 scenarios every server answered: **1441** for postgres-dba-mcp, 1427 for DBHub, 2069 for crystaldba, 5935 for Toolbox. DBHub wins the single request by 14 tokens, with 2 tools against 10;
+- **over a ten-turn investigation**, where definitions are paid once and answers accumulate: **2679** against 5881 (crystaldba), 6077 (DBHub) and 86897 (Toolbox);
+- **22 of 22 scenarios answered and correct**, against 19 for crystaldba, 13 for Toolbox and 8 for DBHub;
+- **131 of 131** attacks refused, against 106 (crystaldba), 80 (DBHub) and 0 (Toolbox, which has no read-only mode), and none of the 47 legitimate statements refused;
+- **9.7 MB** of memory and a **22.9 MB** binary, against 89.6 to 247.9 MB and images of 345 to 422 MB.
+
+The other side: the tool definitions are 1132 tokens against DBHub's 296, and 223 against 7 for a client that defers tool loading. Where postgres-dba-mcp loses, and what was decided from it: [bench/ANALYSE.md](bench/ANALYSE.md).
+
 Method, every number (including where postgres-dba-mcp does worse) and charts: [BENCHMARK.md](BENCHMARK.md). The harness that produced them is in [bench](bench), with its inputs: the data set in [bench/data](bench/data), the attack and legitimate corpora in [testdata/safesql](testdata/safesql), and the scenarios and tasks listed in BENCHMARK.md. `cd bench && go run ./cmd/bench all` redoes the security, memory, cold start and scenario measures with no model account; exact token counts take `--tokens=claude` or an `ANTHROPIC_API_KEY`, and the agent tasks and their judge need the `claude` CLI. Prerequisites and what each level needs: [bench/README.md](bench/README.md).
 
 ## What the model receives
@@ -297,6 +307,7 @@ Tools return plain text, never structured JSON.
 - `NULL` is written `\N`. Newlines, carriage returns and tabs inside a value are written `\n`, `\r` and `\t`, so every record is one line.
 - A cell longer than `--max-cell` characters is cut and ends with `…[+<n> chars]`; this includes `bytea` values (hex text). `execute_sql` accepts `max_cell` (default `--max-cell`, at most `--max-cell-limit`) and, when a cell is shortened, adds a footer line such as `-- 1 cell shortened (txt); pass max_cell (up to 10000) to read more`.
 - A `tsvector` value is summarized as `[tsvector: <n> lexemes]` (`[tsvector: 1 lexeme]` for one). Select `col::text` to read its content.
+- A pgvector `vector` value is summarized as `[vector: <n> dims]`. Select `col::text` to read its content.
 - Every table ends with a footer starting with `--` (`list_schemas` and `list_objects` may also start with one `--` note line, before the header): `-- 12 rows, 38 ms`, `-- 100 rows, truncated (more than 100), 38 ms`, or `-- 57 rows, truncated (32768-byte limit), 38 ms`. Truncated results add a line suggesting to refine the query. Statements with no rows end with their command tag (`-- UPDATE 3, 3 ms`).
 - `explain_query` ends with a footer `-- plan, <duration>`, the wall time of the whole call.
 - A result never exceeds `--max-bytes`, and rows never exceed `max_rows` (default `--max-rows`).

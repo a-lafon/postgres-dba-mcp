@@ -128,3 +128,136 @@ func TestPercentile(t *testing.T) {
 		t.Error("empty percentile or median wrong")
 	}
 }
+
+// Recorded answers to `SELECT * FROM types` of the two servers that answer in JSON: DBHub 1.6.0 (indented, one
+// object per row, numeric as text, bytea as a node Buffer, interval split into days and hours) and MCP Toolbox
+// 1.16.0 (one compact object per line, numeric as a number, bytea in base64, interval as pgtype.Interval).
+const (
+	dbhubTypes = `{
+  "success": true,
+  "data": {
+    "statements": [
+      {
+        "sql": "SELECT * FROM types",
+        "rows": [
+          {
+            "id": 1,
+            "txt": "hello",
+            "empty": "",
+            "num": "532.10",
+            "arr": [
+              1,
+              2
+            ],
+            "iv": {
+              "days": 1,
+              "hours": 2
+            },
+            "ts": "2026-03-02 10:14:00+00",
+            "bin": {
+              "type": "Buffer",
+              "data": [
+                222,
+                173,
+                190,
+                239
+              ]
+            }
+          },
+          {
+            "id": 2,
+            "txt": null
+          }
+        ],
+        "count": 2
+      }
+    ],
+    "source_id": "default"
+  }
+}`
+	toolboxTypes = `{"id":1,"txt":"hello","empty":"","num":532.10,"arr":[1,2],"iv":{"Microseconds":7200000000,"Days":1,"Months":0,"Valid":true},"ts":"2026-03-02T10:14:00Z","bin":"3q2+7w=="}
+{"id":2,"txt":null,"empty":null,"num":null,"arr":null,"iv":null,"ts":null,"bin":null}`
+)
+
+// A fact is graded on the value, not on the rendering: the same eight cells must be found in the CSV of
+// postgres-dba-mcp, in the Python repr of crystaldba and in both JSON renderings.
+func TestFactFormsJSON(t *testing.T) {
+	ts := time.Date(2026, 3, 2, 10, 14, 0, 0, time.UTC)
+	facts := []Fact{Str("hello"), Empty(), Num("532.10"), IntArray([]int32{1, 2}),
+		Interval("1 day 02:00:00", 1, 7200_000_000), Time(ts), Bytea([]byte{0xde, 0xad, 0xbe, 0xef}), Null()}
+	for _, srv := range []struct{ name, text string }{{"dbhub", dbhubTypes}, {"toolbox", toolboxTypes}} {
+		t.Run(srv.name, func(t *testing.T) {
+			if miss := Missing(srv.name, srv.text, facts); len(miss) != 0 {
+				t.Errorf("missing %q", miss)
+			}
+		})
+	}
+}
+
+// A fact must stay a fact: a JSON answer that holds another value does not pass.
+func TestFactJSONRejectsAWrongValue(t *testing.T) {
+	tests := []struct {
+		name string
+		fact Fact
+		text string
+	}{
+		{"wrong string", Str("hello"), `{"txt":"hallo"}`},
+		{"wrong number", Num("532.10"), `{"num":532.11}`},
+		{"a longer number is not that number", Num("532.10"), `{"num":532.109}`},
+		{"a longer integer is not that integer", Int(1), `{"id":15}`},
+		{"string is not a prefix match", Str("hell"), `{"txt":"hello"}`},
+		{"wrong array", IntArray([]int32{1, 2}), `{"arr":[1,3]}`},
+		{"wrong bytes", Bytea([]byte{0xde, 0xad}), `{"bin":"3q0a"}`},
+		{"wrong interval", Interval("1 day 02:00:00", 1, 7200_000_000), `{"iv":{"days":2,"hours":2}}`},
+		{"wrong timestamp", Time(time.Date(2026, 3, 2, 10, 14, 0, 0, time.UTC)), `{"ts":"2026-03-02T10:15:00Z"}`},
+		{"null is not an empty string", Null(), `{"txt":""}`},
+		{"row values must belong to the same row", Row([]string{"customer_id", "sum"}, Int(526), Num("358.12")),
+			`{"customer_id":526,"sum":"1.00"}` + "\n" + `{"customer_id":1,"sum":"358.12"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if miss := Missing("dbhub", tt.text, []Fact{tt.fact}); len(miss) != 1 {
+				t.Errorf("%s accepted %s", tt.fact.JSON, tt.text)
+			}
+		})
+	}
+}
+
+// A row is one row: its values must be found together, in one JSON object.
+func TestRowJSON(t *testing.T) {
+	row := Row([]string{"customer_id", "sum"}, Int(526), Num("358.12"))
+	for _, text := range []string{
+		`{"customer_id":526,"sum":358.12}`,
+		"{\n            \"customer_id\": 526,\n            \"sum\": \"358.12\"\n          }",
+	} {
+		if miss := Missing("dbhub", text, []Fact{row}); len(miss) != 0 {
+			t.Errorf("row not found in %s", text)
+		}
+	}
+}
+
+// The same Postgres message reaches the harness escaped inside DBHub's JSON and bare inside Toolbox's plain-text
+// error: both are the server relaying it.
+func TestSameJSONEscapes(t *testing.T) {
+	f := Same(`column "nme" does not exist`)
+	for _, text := range []string{
+		`{"success":false,"error":"column \"nme\" does not exist"}`,
+		`error processing request: unable to execute query: ERROR: column "nme" does not exist (SQLSTATE 42703)`,
+	} {
+		if miss := Missing("dbhub", text, []Fact{f}); len(miss) != 0 {
+			t.Errorf("message not found in %s: %q", text, miss)
+		}
+	}
+	if miss := Missing("dbhub", `{"error":"column "x" does not exist"}`, []Fact{f}); len(miss) != 1 {
+		t.Error("another column's error was accepted")
+	}
+}
+
+// A jsonb column puts braces inside the row, so a row fact must not be anchored on the row's own braces.
+func TestRowJSONWithANestedObject(t *testing.T) {
+	row := Row([]string{"id"}, Int(1))
+	text := "{\n  \"id\": 1,\n  \"payload\": {\n    \"a\": {\"b\": 2}\n  }\n}"
+	if miss := Missing("dbhub", text, []Fact{row}); len(miss) != 0 {
+		t.Errorf("row with a jsonb column not found: %q", miss)
+	}
+}

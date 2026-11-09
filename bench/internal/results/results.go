@@ -62,6 +62,9 @@ const (
 	StatusOversized = "failed (oversized)"
 	StatusError     = "failed (error)"
 	StatusSkipped   = "skipped"
+	// StatusNoTool is a tool the server does not have: counted apart, never as a failure nor as a wrong answer, and
+	// left out of the medians and of the correctness verdict.
+	StatusNoTool = "no tool"
 )
 
 // Truncation states of an N2 cell.
@@ -133,7 +136,37 @@ type SecurityCase struct {
 type Security struct {
 	Env     Env                       `json:"env"`
 	Attacks map[string][]SecurityCase `json:"attacks"`
-	Legit   []SecurityCase            `json:"legit"`
+	// Legit is the legit corpus replayed through every measured server: its refusals are that server's false refusals.
+	Legit map[string][]SecurityCase `json:"legit"`
+}
+
+// SessionTurn is one turn of the long-session level: what was asked, with which tool, and what it put in context.
+type SessionTurn struct {
+	Intent   string `json:"intent"`
+	Want     string `json:"want"`
+	Tool     string `json:"tool"`
+	Fallback bool   `json:"fallback,omitempty"`
+	SQL      string `json:"sql,omitempty"` // the fallback SQL, the same for every server that falls back
+	Tokens   int    `json:"tokens"`
+	Bytes    int    `json:"bytes"`
+	// Cumulative is the context at this turn: the tool definitions, which every request carries, plus every
+	// answer from the first turn to this one.
+	Cumulative int    `json:"cumulative"`
+	Status     string `json:"status"`
+	Note       string `json:"note,omitempty"`
+}
+
+// SessionServer is one server's run of the investigation.
+type SessionServer struct {
+	Server     string        `json:"server"`
+	ToolTokens int           `json:"tool_tokens"`
+	Turns      []SessionTurn `json:"turns"`
+}
+
+// Session is session.json.
+type Session struct {
+	Env     Env             `json:"env"`
+	Servers []SessionServer `json:"servers"`
 }
 
 // N3Run is one `claude -p` run.
@@ -237,11 +270,17 @@ type Ops struct {
 	// NativeRSSMB is postgres-dba-mcp's native binary after the same calls (informational).
 	NativeRSSMB Measure            `json:"native_rss_mb"`
 	SizeMB      map[string]Measure `json:"size_mb"`
-	Concurrency struct {
-		Calls   int  `json:"calls"`
-		Errors  int  `json:"errors"`
-		Skipped bool `json:"skipped,omitempty"`
-	} `json:"concurrency"`
+	// Concurrency is the same measure for every server: N calls at once on one stdio session of one process.
+	Concurrency map[string]Conc `json:"concurrency"`
+}
+
+// Conc is what one server did under N concurrent calls on a single stdio session.
+type Conc struct {
+	Calls   int     `json:"calls"`
+	Errors  int     `json:"errors"`
+	P95MS   float64 `json:"p95_ms"`
+	Note    string  `json:"note,omitempty"`
+	Skipped bool    `json:"skipped,omitempty"`
 }
 
 // NewRunID returns a UTC timestamp run id, YYYYMMDDTHHMMSSZ.

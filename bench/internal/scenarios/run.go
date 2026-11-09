@@ -73,6 +73,11 @@ func (r *Runner) runServer(ctx context.Context, spec servers.Spec, all []Scenari
 			rows[i].Cells[spec.Name] = results.N2Cell{Status: results.StatusSkipped}
 			continue
 		}
+		// A tool the server does not have is counted apart: neither a failure nor a wrong answer.
+		if _, ok := spec.ToolName(s.Tool); !ok {
+			rows[i].Cells[spec.Name] = results.N2Cell{Status: results.StatusNoTool}
+			continue
+		}
 		if srv == nil {
 			var err error
 			if srv, err = spec.Start(ctx); err != nil {
@@ -80,7 +85,7 @@ func (r *Runner) runServer(ctx context.Context, spec servers.Spec, all []Scenari
 			}
 		}
 		_, _ = fmt.Fprintf(r.Log, "n2 %s %s\n", s.ID, spec.Name)
-		cell, failed, err := r.measure(ctx, srv, spec.Name, s, calls[i])
+		cell, failed, err := r.measure(ctx, srv, spec, s, calls[i])
 		if err != nil {
 			return fmt.Errorf("%s on %s: %w", s.ID, spec.Name, err)
 		}
@@ -94,11 +99,15 @@ func (r *Runner) runServer(ctx context.Context, spec servers.Spec, all []Scenari
 }
 
 // measure runs one scenario Runs times on srv. failed reports that the server must be restarted.
-func (r *Runner) measure(ctx context.Context, srv *servers.Server, name string, s Scenario, c Call) (cell results.N2Cell, failed bool, err error) {
-	tool := s.Tool
+func (r *Runner) measure(ctx context.Context, srv *servers.Server, spec servers.Spec, s Scenario, c Call) (cell results.N2Cell, failed bool, err error) {
+	name := spec.Name
+	tool, _ := spec.ToolName(s.Tool) // runServer skipped the scenario when the server has no such tool
 	if name == results.PgEdge {
-		tool = "query_database" // pgEdge's SQL tool; only S01-S06 run on it
-		c.Args = map[string]any{"query": c.Args["sql"]}
+		c.Args = map[string]any{"query": c.Args["sql"]} // pgEdge names the SQL argument differently; only S01-S06 run on it
+	}
+	setup, ok := setupTools(spec, c.Setup)
+	if !ok {
+		return results.N2Cell{Status: results.StatusNoTool}, false, nil
 	}
 	cell.Correct = true
 	cell.Truncation = results.TruncNone
@@ -106,8 +115,8 @@ func (r *Runner) measure(ctx context.Context, srv *servers.Server, name string, 
 	var lat []float64
 	var toks []float64
 	for run := 0; run < Runs; run++ {
-		for _, st := range c.Setup {
-			if _, err := srv.Call(ctx, st.Tool, st.Args); err != nil {
+		for i, st := range c.Setup {
+			if _, err := srv.Call(ctx, setup[i], st.Args); err != nil {
 				return failCell(cell, err), true, nil
 			}
 		}
@@ -130,7 +139,7 @@ func (r *Runner) measure(ctx context.Context, srv *servers.Server, name string, 
 		if err := r.keep(name, s.ID, res.Text); err != nil {
 			return cell, false, err
 		}
-		gradeCell(&cell, name, s, c, res.Text, res.IsError)
+		gradeCell(&cell, spec, s, c, res.Text, res.IsError)
 	}
 	cell.LatencyMS = lat
 	cell.P50MS, cell.P95MS = Percentile(lat, 50), Percentile(lat, 95)
@@ -138,8 +147,24 @@ func (r *Runner) measure(ctx context.Context, srv *servers.Server, name string, 
 	return cell, false, nil
 }
 
+// setupTools returns the names spec gives to the setup steps, in order. ok is false when it has no such tool: a
+// setup step is a tool call like any other, and calling it by its canonical name fails on a server that renames it
+// (explain_query is explain_sql on dbhub-4tools).
+func setupTools(spec servers.Spec, setup []Step) ([]string, bool) {
+	out := make([]string, len(setup))
+	for i, st := range setup {
+		name, ok := spec.ToolName(st.Tool)
+		if !ok {
+			return nil, false
+		}
+		out[i] = name
+	}
+	return out, true
+}
+
 // gradeCell applies the checks of s to the text of a first run and sets the verdict fields of cell.
-func gradeCell(cell *results.N2Cell, name string, s Scenario, c Call, text string, isError bool) {
+func gradeCell(cell *results.N2Cell, spec servers.Spec, s Scenario, c Call, text string, isError bool) {
+	name := spec.Name
 	cell.Status = results.StatusOK
 	out := c.Check(name, text)
 	cell.Missing, cell.Detected, cell.Advice = out.Missing, out.Detected, out.Advice
@@ -147,7 +172,7 @@ func gradeCell(cell *results.N2Cell, name string, s Scenario, c Call, text strin
 	// S07 is the one scenario whose expected answer is an error. Everywhere else a server that answers with an error
 	// did not answer the question: counting the tokens of its error message as a response would reward failing fast,
 	// and a scenario that declares no fact would even grade it correct.
-	if class := servers.Classify(name, isError, text); s.ID != "S07" {
+	if class := spec.Class(isError, text); s.ID != "S07" {
 		switch class {
 		case results.ClassRefused:
 			cell.FalseRefusal, cell.Correct = true, false
@@ -158,7 +183,11 @@ func gradeCell(cell *results.N2Cell, name string, s Scenario, c Call, text strin
 	if name == results.Crystal {
 		return
 	}
-	signalled := Truncated(text)
+	truncated := spec.Truncated
+	if truncated == nil {
+		truncated = Truncated
+	}
+	signalled := truncated(text)
 	switch {
 	case s.Trunc != TruncNone && !signalled:
 		cell.Truncation, cell.Correct = results.TruncMissing, false
@@ -208,11 +237,22 @@ func (r *Runner) Recheck(ctx context.Context, prev []results.N2Row) ([]results.N
 				return nil, fmt.Errorf("read kept output: %w", err)
 			}
 			cell.Correct, cell.FalseRefusal, cell.Truncation = true, false, results.TruncNone
-			gradeCell(&cell, name, s, c, string(text), strings.HasPrefix(string(text), "ERROR:"))
+			gradeCell(&cell, r.specOf(name), s, c, string(text), strings.HasPrefix(string(text), "ERROR:"))
 			prev[i].Cells[name] = cell
 		}
 	}
 	return prev, nil
+}
+
+// specOf returns the spec of a server among Specs, or a bare one with the default classification when Specs is
+// empty, as `n2 --recheck` leaves it.
+func (r *Runner) specOf(name string) servers.Spec {
+	for _, s := range r.Specs {
+		if s.Name == name {
+			return s
+		}
+	}
+	return servers.Spec{Name: name}
 }
 
 // keep writes the response text of the first run to OutDir.

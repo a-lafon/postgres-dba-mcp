@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/scenarios"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/security"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
+	sessions "github.com/a-lafon/postgres-dba-mcp/bench/internal/session"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/tokens"
 )
 
@@ -173,10 +175,31 @@ func (s *session) logCost(c *tokens.Counter) {
 
 func (s *session) dbaSpec() servers.Spec { return servers.DBA(s.bin(), servers.BenchDSN) }
 
-// containerDSN is the bench database as a container on the bench network sees it.
-const containerDSN = "postgres://bench_ro:bench@pg:5432/bench"
+// The bench databases as a container on the bench network sees them.
+const (
+	containerDSN        = "postgres://bench_ro:bench@pg:5432/bench"
+	fixtureContainerDSN = "postgres://pgdba_ro:pgdba@fixture:5432/pgdba"
+)
 
 func (s *session) crystalSpec() servers.Spec { return servers.Crystal(containerDSN) }
+
+// benchTarget and fixtureTarget are the two databases a server under test connects to.
+func benchTarget() servers.Target {
+	return servers.Target{DSN: servers.BenchDSN, URI: containerDSN}
+}
+
+func fixtureTarget() servers.Target {
+	return servers.Target{DSN: servers.FixtureDSN, URI: fixtureContainerDSN}
+}
+
+// specs returns the servers to measure against t, in report order: dba then crystal, or the ones --servers names.
+func (s *session) specs(t servers.Target) ([]servers.Spec, error) {
+	names := []string{results.DBA, results.Crystal}
+	if s.opts.servers != "" {
+		names = strings.Split(s.opts.servers, ",")
+	}
+	return servers.Of(names, t, s.bin())
+}
 
 func cmdN1(ctx context.Context, s *session) error {
 	l, err := s.begin(ctx)
@@ -186,7 +209,11 @@ func cmdN1(ctx context.Context, s *session) error {
 	defer l.close()
 	defer s.logCost(l.counter)
 	out := results.N1{Env: l.env}
-	for _, spec := range []servers.Spec{s.dbaSpec(), s.crystalSpec()} {
+	specs, err := s.specs(benchTarget())
+	if err != nil {
+		return err
+	}
+	for _, spec := range specs {
 		srv, err := spec.Start(ctx)
 		if err != nil {
 			return err
@@ -222,8 +249,17 @@ func sameRole(ctx context.Context, db *pgxpool.Pool, specs []servers.Spec) (bool
 			return false, err
 		}
 		defer srv.Close()
-		if _, err := srv.Call(ctx, "list_schemas", map[string]any{}); err != nil {
-			return false, fmt.Errorf("list_schemas on %s: %w", spec.Name, err)
+		// list_schemas opens a session without reading anything; a server that has no such tool gets a bare SELECT.
+		tool, args := "list_schemas", map[string]any{}
+		if _, ok := spec.ToolName(tool); !ok {
+			tool, args = "execute_sql", map[string]any{"sql": "SELECT 1"}
+		}
+		name, ok := spec.ToolName(tool)
+		if !ok {
+			continue
+		}
+		if _, err := srv.Call(ctx, name, args); err != nil {
+			return false, fmt.Errorf("%s on %s: %w", name, spec.Name, err)
 		}
 	}
 	rows, err := db.Query(ctx, "SELECT DISTINCT usename FROM pg_stat_activity WHERE datname = 'bench' AND backend_type = 'client backend'")
@@ -260,11 +296,33 @@ func cmdN2Recheck(ctx context.Context, s *session) error {
 		return err
 	}
 	defer db.Close()
-	r := &scenarios.Runner{DB: db, OutDir: filepath.Join(dir, "n2")}
+	// The specs are rebuilt from the names in the results: a cell is graded with its own server's reading of a
+	// refusal and of a truncation signal, which a bare spec does not have.
+	specs, err := servers.Of(n2Servers(n2), benchTarget(), s.bin())
+	if err != nil {
+		return err
+	}
+	r := &scenarios.Runner{DB: db, Specs: specs, OutDir: filepath.Join(dir, "n2")}
 	if n2.Rows, err = r.Recheck(ctx, n2.Rows); err != nil {
 		return err
 	}
 	return results.Save(dir, "n2", n2)
+}
+
+// n2Servers returns the servers an n2.json holds cells for.
+func n2Servers(n2 results.N2) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range n2.Rows {
+		for name := range r.Cells {
+			if !seen[name] {
+				seen[name] = true
+				out = append(out, name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func cmdN2(ctx context.Context, s *session) error {
@@ -277,7 +335,10 @@ func cmdN2(ctx context.Context, s *session) error {
 	}
 	defer l.close()
 	defer s.logCost(l.counter)
-	specs := []servers.Spec{s.dbaSpec(), s.crystalSpec()}
+	specs, err := s.specs(benchTarget())
+	if err != nil {
+		return err
+	}
 	same, err := sameRole(ctx, l.db, specs)
 	if err != nil {
 		return err
@@ -294,7 +355,7 @@ func cmdN2(ctx context.Context, s *session) error {
 	if err != nil {
 		return err
 	}
-	if s.opts.withPgEdge && len(specs) == 2 { // binary missing: its cells read skipped
+	if s.opts.withPgEdge && !hasSpec(specs, results.PgEdge) { // binary missing: its cells read skipped
 		for _, row := range rows {
 			if row.ID <= "S06" {
 				row.Cells[results.PgEdge] = results.N2Cell{Status: results.StatusSkipped}
@@ -326,18 +387,33 @@ func cmdSecurity(ctx context.Context, s *session) error {
 		return err
 	}
 	defer r.Close(ctx)
-	out := results.Security{Env: l.env, Attacks: map[string][]results.SecurityCase{}}
-	dba := servers.DBA(s.bin(), servers.FixtureDSN)
-	crystal := servers.Crystal("postgres://pgdba_ro:pgdba@fixture:5432/pgdba")
-	for _, spec := range []servers.Spec{dba, crystal} {
+	out := results.Security{Env: l.env, Attacks: map[string][]results.SecurityCase{}, Legit: map[string][]results.SecurityCase{}}
+	specs, err := s.specs(fixtureTarget())
+	if err != nil {
+		return err
+	}
+	for _, spec := range specs {
 		if out.Attacks[spec.Name], err = r.Replay(ctx, spec, attacks, true); err != nil {
 			return err
 		}
 	}
-	if out.Legit, err = r.Replay(ctx, dba, legit, false); err != nil {
-		return err
+	// The legit corpus counts the false refusals of every measured server, not only postgres-dba-mcp's.
+	for _, spec := range specs {
+		if out.Legit[spec.Name], err = r.Replay(ctx, spec, legit, false); err != nil {
+			return err
+		}
 	}
 	return results.Save(l.dir, "security", out)
+}
+
+// hasSpec reports whether a server is among specs.
+func hasSpec(specs []servers.Spec, name string) bool {
+	for _, s := range specs {
+		if s.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func readCorpus(s *session, name string) ([]security.Case, error) {
@@ -374,6 +450,25 @@ func cmdN3(ctx context.Context, s *session) error {
 	return results.Save(l.dir, "n3", results.N3{Env: l.env, Runs: runs})
 }
 
+func cmdSession(ctx context.Context, s *session) error {
+	l, err := s.begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer l.close()
+	defer s.logCost(l.counter)
+	specs, err := s.specs(benchTarget())
+	if err != nil {
+		return err
+	}
+	r := &sessions.Runner{Counter: l.counter, Specs: specs, Log: s.err}
+	rows, err := r.Run(ctx)
+	if err != nil {
+		return err
+	}
+	return results.Save(l.dir, "session", results.Session{Env: l.env, Servers: rows})
+}
+
 func cmdOps(ctx context.Context, s *session) error {
 	l, err := s.begin(ctx)
 	if err != nil {
@@ -385,12 +480,43 @@ func cmdOps(ctx context.Context, s *session) error {
 			return err
 		}
 	}
-	out, err := ops.Run(ctx, ops.Options{DBA: s.dbaSpec(), Image: servers.DBAImage(containerDSN), Crystal: s.crystalSpec(), Bin: s.bin(), DSN: servers.BenchDSN, Pagila: l.env.Pagila, Log: s.err})
+	others, err := s.opsOthers()
+	if err != nil {
+		return err
+	}
+	out, err := ops.Run(ctx, ops.Options{DBA: s.dbaSpec(), Image: servers.DBAImage(containerDSN), Crystal: s.crystalSpec(),
+		Others: others, Bin: s.bin(), DSN: servers.BenchDSN, Pagila: l.env.Pagila, Log: s.err})
 	if err != nil {
 		return err
 	}
 	out.Env = l.env
 	return results.Save(l.dir, "ops", out)
+}
+
+// opsDefaults are the reference variants of the other servers: ops measures one configuration per server, the one
+// the goal names, because memory and start-up do not change with a tool list.
+var opsDefaults = []string{servers.DBHubRef, servers.Toolbox}
+
+// opsOthers returns the servers ops measures beside postgres-dba-mcp and crystaldba, which it always measures.
+func (s *session) opsOthers() ([]servers.Spec, error) {
+	names := opsDefaults
+	if s.opts.servers != "" {
+		names = strings.Split(s.opts.servers, ",")
+	}
+	var out []servers.Spec
+	for _, name := range names {
+		if name == results.DBA || name == results.Crystal {
+			continue
+		}
+		f, ok := servers.Lookup(name)
+		if !ok {
+			return nil, fmt.Errorf("unknown server %q in --servers", name)
+		}
+		spec := f(benchTarget())
+		spec.Name = name
+		out = append(out, spec)
+	}
+	return out, nil
 }
 
 func cmdReport(_ context.Context, s *session) error {
@@ -414,6 +540,23 @@ func cmdReport(_ context.Context, s *session) error {
 			}
 		}
 	}
+	return nil
+}
+
+// cmdCompare writes compare.md: one column per measured server, from the raw results of the run.
+func cmdCompare(_ context.Context, s *session) error {
+	dir, err := s.runFolder()
+	if err != nil {
+		return err
+	}
+	in, err := report.Load(dir, s.runID)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(s.benchDir, "compare.md"), []byte(report.Compare(in)), 0o644); err != nil {
+		return fmt.Errorf("write compare.md: %w", err)
+	}
+	_, _ = fmt.Fprintf(s.out, "compare.md written for run %s\n", s.runID)
 	return nil
 }
 

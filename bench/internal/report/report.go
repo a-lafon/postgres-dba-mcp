@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/a-lafon/postgres-dba-mcp/bench/internal/ops"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/scenarios"
 )
@@ -175,7 +176,7 @@ func renderN2(sb *strings.Builder, in Inputs) {
 		if a.Status == results.StatusOK {
 			bytes, lat, trunc = fmt.Sprint(a.Bytes), fmt.Sprintf("%.0f / %.0f", a.P50MS, a.P95MS), a.Truncation
 		}
-		if a.Status != results.StatusSkipped && b.Status != "" {
+		if graded(a) && graded(b) {
 			correct = yesNo(a.Correct) + " / " + yesNo(b.Correct)
 		}
 		rows = append(rows, []string{r.ID, r.Tool, cellTokens(r, results.DBA), cellTokens(r, results.Crystal), delta, bytes, lat, correct, trunc})
@@ -233,7 +234,7 @@ func renderSecurity(sb *strings.Builder, in Inputs) {
 	tbl(sb, []string{"Server", "Cases", "refused", "failed at execution", "executed", "with side effect"}, rows)
 	s := SummarizeSecurity(in.Sec)
 	fmt.Fprintf(sb, "postgres-dba-mcp: %d attack cases not refused or failed at execution, %d with a side effect, %d false refusals on legit.sql (%d cases). Target: 0 / 0 / 0.\n\n",
-		s.NotRefused, s.SideEffects, s.FalseRefs, len(in.Sec.Legit))
+		s.NotRefused, s.SideEffects, s.FalseRefs, len(in.Sec.Legit[results.DBA]))
 
 	sb.WriteString("crystaldba on the function-in-FROM cases (`fn-*-from`, CVE-2026-85620), a reported finding that does not fail the bench:\n\n")
 	var fn [][]string
@@ -322,6 +323,21 @@ func renderN3(sb *strings.Builder, in Inputs) {
 	tbl(sb, []string{"Task", "Pass dba", "Tokens dba", "Turns dba", "Pass crystal", "Tokens crystal", "Turns crystal"}, rows)
 }
 
+// concText reads one concurrency measure as a report cell.
+func concText(c results.Conc) string {
+	switch {
+	case c.Skipped:
+		return "skipped"
+	case c.Calls == 0:
+		return "n/a"
+	}
+	s := fmt.Sprintf("%d errors in %d calls, p95 %.0f ms", c.Errors, c.Calls, c.P95MS)
+	if c.Note != "" {
+		s += " (" + c.Note + ")"
+	}
+	return s
+}
+
 func renderOps(sb *strings.Builder, in Inputs) {
 	sb.WriteString("## Operations\n\n")
 	if in.Ops == nil {
@@ -350,15 +366,15 @@ func renderOps(sb *strings.Builder, in Inputs) {
 		}
 		return yn(m.Value < limit)
 	}
-	conc, concMet := fmt.Sprintf("%d errors in %d calls", o.Concurrency.Errors, o.Concurrency.Calls), yn(o.Concurrency.Errors == 0)
-	if o.Concurrency.Skipped {
+	conc, concMet := concText(o.Concurrency[results.DBA]), yn(o.Concurrency[results.DBA].Errors == 0)
+	if c, ok := o.Concurrency[results.DBA]; !ok || c.Skipped {
 		conc, concMet = "skipped", Unverified
 	}
 	rows := [][]string{
 		{"Cold start (median of 20)", show(o.ColdStartMS[results.DBA], "%.1f ms"), show(o.ColdStartMS[results.Crystal], "%.0f ms"), "< 50 ms", met(o.ColdStartMS[results.DBA], 50)},
 		{"Memory after 100 S02 calls", show(o.RSSMB[results.DBA], "%.1f MB"), show(o.RSSMB[results.Crystal], "%.1f MB"), "< 30 MB", met(o.RSSMB[results.DBA], 30)},
 		{"Binary / image size", show(o.SizeMB[results.DBA], "%.1f MB"), show(o.SizeMB[results.Crystal], "%.0f MB"), "< 30 MB", met(o.SizeMB[results.DBA], 30)},
-		{"50 concurrent S01 over HTTP", conc, "n/a", "0 errors", concMet},
+		{fmt.Sprintf("%d concurrent S01 on one stdio session", ops.Concurrent), conc, concText(o.Concurrency[results.Crystal]), "0 errors", concMet},
 	}
 	tbl(sb, []string{"Measure", "dba", "crystal", "Target", "Met"}, rows)
 	// ops.json written before the image measure has no native value: nothing to say.
@@ -395,13 +411,18 @@ func renderSkipped(sb *strings.Builder, in Inputs) {
 				if c.Status == results.StatusSkipped {
 					lines = append(lines, fmt.Sprintf("- skipped: %s on %s", r.ID, server))
 				}
+				if c.Status == results.StatusNoTool {
+					lines = append(lines, fmt.Sprintf("- no %s tool: %s on %s", r.Tool, r.ID, server))
+				}
 			}
 		}
 	}
 	if in.Sec != nil {
-		for _, c := range in.Sec.Legit {
-			if c.Class == results.ClassRefused {
-				lines = append(lines, fmt.Sprintf("- false refusal on legit.sql: %s (%s)", c.ID, c.Text))
+		for _, server := range scenarios.Sorted(in.Sec.Legit) {
+			for _, c := range in.Sec.Legit[server] {
+				if c.Class == results.ClassRefused {
+					lines = append(lines, fmt.Sprintf("- false refusal on legit.sql: %s on %s (%s)", c.ID, server, c.Text))
+				}
 			}
 		}
 	}
@@ -411,8 +432,10 @@ func renderSkipped(sb *strings.Builder, in Inputs) {
 				lines = append(lines, "- skipped: ops "+name)
 			}
 		}
-		if in.Ops.Concurrency.Skipped {
-			lines = append(lines, "- skipped: ops concurrency")
+		for _, name := range scenarios.Sorted(in.Ops.Concurrency) {
+			if in.Ops.Concurrency[name].Skipped {
+				lines = append(lines, "- skipped: ops concurrency "+name)
+			}
 		}
 	}
 	if len(lines) == 0 {
