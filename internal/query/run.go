@@ -18,6 +18,9 @@ const (
 	declarePrefix = "DECLARE " + cursorName + " NO SCROLL CURSOR FOR "
 
 	oidTSVector = 3614 // built-in type tsvector
+	// firstUserOID is the first OID Postgres hands out: below it every type is built in. pgvector is an
+	// extension, so its `vector` has no fixed OID, and only an extension type may be read as one.
+	firstUserOID = 16384
 )
 
 // result is what one statement returned: at most maxRows rows, or a command tag when it has no columns.
@@ -105,10 +108,17 @@ func collect(ctx context.Context, tx pgx.Tx, sql string, lim limits) (result, er
 	}
 	defer rows.Close()
 	var res result
-	var tsvectors []bool // columns whose cells are summarized
+	var summarize []func(string) (string, bool) // per column, nil when the cell is kept as it is
 	for _, fd := range rows.FieldDescriptions() {
 		res.Columns = append(res.Columns, fd.Name)
-		tsvectors = append(tsvectors, fd.DataTypeOID == oidTSVector)
+		switch {
+		case fd.DataTypeOID == oidTSVector:
+			summarize = append(summarize, format.SummarizeTSVector)
+		case fd.DataTypeOID >= firstUserOID:
+			summarize = append(summarize, format.SummarizeVector)
+		default:
+			summarize = append(summarize, nil)
+		}
 	}
 	kept, size, seen := 0, 0, 0
 	for rows.Next() {
@@ -121,8 +131,8 @@ func collect(ctx context.Context, tx pgx.Tx, sql string, lim limits) (result, er
 		short := make([]bool, len(raw))
 		for i, v := range raw {
 			if v != nil {
-				if tsvectors[i] {
-					if s, ok := format.SummarizeTSVector(string(v)); ok {
+				if summarize[i] != nil {
+					if s, ok := summarize[i](string(v)); ok {
 						v = []byte(s)
 					}
 				}
