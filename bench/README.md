@@ -24,7 +24,7 @@ Run them from this folder.
 go run ./cmd/bench up                      # docker compose up (pg, fixture), build bin/postgres-dba-mcp and the linux image postgres-dba-mcp:bench
 go run ./cmd/bench load --scale=0.1        # data set, traps, Pagila, ANALYZE, then 120 s of pgbench
 go run ./cmd/bench n1                      # tool-definition tokens (informational)
-go run ./cmd/bench n2                      # S01-S21, 5 runs per scenario and server
+go run ./cmd/bench n2                      # S01-S22, 5 runs per scenario and server
 go run ./cmd/bench security                # attack corpus replay through both servers
 go run ./cmd/bench ops                     # cold start, memory (linux image, docker stats; native binary as information), sizes (release-flag build: -trimpath -ldflags "-s -w"), 50 concurrent calls over HTTP
 go run ./cmd/bench n3                      # 6 agent tasks with `claude -p`: costs model calls, run by hand only
@@ -61,6 +61,7 @@ The bench database is the test fixture's base schema at scale (events 5 000 000,
 
 - schema `traps`: T1 invalid index, T2 duplicate indexes, T3 dead tuples (37.5 %), T4 sequence at 91 %, T5 NOT VALID constraint, T6 unused index (over 100 MB at scale 1);
 - `public.docs` (20 kB jsonb, 50 kB text), `public.wide60` (60 columns), `public.types` (NULL, empty string, bytea, array, interval, timestamptz);
+- `public.embeddings` (2 000 rows times `--scale`, at least 10): a `vector(1536)` column of pseudo-random unit vectors and its text metadata, what a RAG application stores. It needs pgvector, which the image of `testdata/docker` installs;
 - Pagila (`film`, `rental`, `payment`, ...), fetched from the commit pinned in `data/pagila.lock` and checked against its sha256 before anything is loaded. The pinned commit is the last one whose schema runs on PostgreSQL 17 (later ones use `uuidv7()`); with `PG_MAJOR=18` a newer commit can be pinned.
 
 How `load` was loaded is recorded in the database comment, which every level reads (scale, Pagila).

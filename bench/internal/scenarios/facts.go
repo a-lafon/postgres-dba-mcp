@@ -1,4 +1,4 @@
-// Package scenarios holds the N2 scenarios S01-S21: the call each one makes, the facts its answer must contain
+// Package scenarios holds the N2 scenarios S01-S22: the call each one makes, the facts its answer must contain
 // (computed from the database, rendered the way each server renders them) and the runner.
 package scenarios
 

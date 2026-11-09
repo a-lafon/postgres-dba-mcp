@@ -40,7 +40,7 @@ CI runs the same commands; `go.mod` pins the Go toolchain, so a stdlib fix means
 
 ```sh
 cd bench
-go run ./cmd/bench all                   # the 21 scenarios, the attack corpus, memory and cold start, no model account
+go run ./cmd/bench all                   # the 22 scenarios, the attack corpus, memory and cold start, no model account
 go run ./cmd/bench all --tokens=claude   # the same with exact token counts, through the claude CLI, for a few USD
 ```
 

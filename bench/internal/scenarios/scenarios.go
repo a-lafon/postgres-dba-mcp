@@ -93,7 +93,7 @@ const (
 
 var hypoEvents = []map[string]any{{"table": "events", "columns": []string{"account_id", "created_at"}}}
 
-// All returns S01-S21 in order.
+// All returns S01-S22 in order.
 func All() []Scenario {
 	sql := func(id, q string, p bool, t Trunc, facts func(context.Context, *pgxpool.Pool) ([]Fact, error)) Scenario {
 		return Scenario{ID: id, Tool: "execute_sql", Pagila: p, Trunc: t, Prepare: func(ctx context.Context, db *pgxpool.Pool) (Call, error) {
@@ -138,6 +138,14 @@ func All() []Scenario {
 		advice("S19"),
 		advice("S20"),
 		leak(),
+		// S22 reads a pgvector table. Trunc is TruncNone on purpose, and stays right whichever way a vector cell is
+		// rendered: today postgres-dba-mcp shortens it to 200 characters, which Truncated() sees, and the planned
+		// `[vector: N dims]` summary signals nothing. TruncNone accepts a signal (gradeCell only records it) and
+		// never demands one, where TruncCells would fail the cell as soon as the summary lands.
+		sql("S22", "SELECT * FROM embeddings LIMIT 10", false, TruncNone, func(ctx context.Context, db *pgxpool.Pool) ([]Fact, error) {
+			titles, err := strs(ctx, db, "SELECT title FROM embeddings LIMIT 10")
+			return mapFacts(titles, Str), err
+		}),
 	}
 }
 
