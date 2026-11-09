@@ -565,6 +565,23 @@ func cmdReport(_ context.Context, s *session) error {
 	return nil
 }
 
+// cmdCompare writes compare.md: one column per measured server, from the raw results of the run.
+func cmdCompare(_ context.Context, s *session) error {
+	dir, err := s.runFolder()
+	if err != nil {
+		return err
+	}
+	in, err := report.Load(dir, s.runID)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(s.benchDir, "compare.md"), []byte(report.Compare(in)), 0o644); err != nil {
+		return fmt.Errorf("write compare.md: %w", err)
+	}
+	_, _ = fmt.Fprintf(s.out, "compare.md written for run %s\n", s.runID)
+	return nil
+}
+
 // cmdAll runs every level except n3, then the report.
 func cmdAll(ctx context.Context, s *session) error {
 	for _, step := range []struct {

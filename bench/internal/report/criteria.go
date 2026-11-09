@@ -11,13 +11,14 @@ import (
 
 // Inputs are the results of a run; a nil level was not run.
 type Inputs struct {
-	RunID string
-	N1    *results.N1
-	N2    *results.N2
-	Sec   *results.Security
-	N3    *results.N3
-	Judge *results.Judge // informational: not part of the verdict
-	Ops   *results.Ops
+	RunID   string
+	N1      *results.N1
+	N2      *results.N2
+	Sec     *results.Security
+	N3      *results.N3
+	Judge   *results.Judge // informational: not part of the verdict
+	Ops     *results.Ops
+	Session *results.Session
 }
 
 // Load reads the level files of a run folder.
@@ -30,6 +31,7 @@ func Load(dir, runID string) (Inputs, error) {
 	}{
 		{"n1", new(results.N1), nil}, {"n2", new(results.N2), nil}, {"security", new(results.Security), nil},
 		{"n3", new(results.N3), nil}, {"judge", new(results.Judge), nil}, {"ops", new(results.Ops), nil},
+		{"session", new(results.Session), nil},
 	} {
 		ok, err := results.Load(dir, l.name, l.dst)
 		if err != nil {
@@ -51,6 +53,8 @@ func Load(dir, runID string) (Inputs, error) {
 			in.Judge = v
 		case *results.Ops:
 			in.Ops = v
+		case *results.Session:
+			in.Session = v
 		}
 	}
 	return in, nil

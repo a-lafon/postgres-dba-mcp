@@ -8,7 +8,7 @@ Requirements: Go 1.26 or newer (`go.mod` pins a newer toolchain, which the `go` 
 
 | Level | Model |
 | --- | --- |
-| `load`, `n2`, `security`, `ops`, `report` | none |
+| `load`, `n2`, `security`, `ops`, `session`, `compare`, `report` | none |
 | `n1` | none; `ANTHROPIC_API_KEY` or `--tokens=claude` only to count tokens exactly |
 | `all` (up, load, n1, n2, security, ops, report) | none; the same optional token counting, and it never runs `n3` |
 | `n3` | yes, the `claude` CLI: the agent tasks are real model calls |
@@ -26,12 +26,14 @@ go run ./cmd/bench load --scale=0.1        # data set, traps, Pagila, ANALYZE, t
 go run ./cmd/bench n1                      # tool-definition tokens (informational)
 go run ./cmd/bench n2                      # S01-S22, 5 runs per scenario and server
 go run ./cmd/bench security                # attack corpus replay through both servers
-go run ./cmd/bench ops                     # cold start, memory (linux image, docker stats; native binary as information), sizes (release-flag build: -trimpath -ldflags "-s -w"), 50 concurrent calls over HTTP
+go run ./cmd/bench ops                     # cold start, memory (linux image, docker stats; native binary as information), sizes (release-flag build: -trimpath -ldflags "-s -w"), 50 concurrent calls on one stdio session
+go run ./cmd/bench session                 # ten-turn DBA investigation: what each server accumulates in context, no model call
 go run ./cmd/bench n3                      # 6 agent tasks with `claude -p`: costs model calls, run by hand only
 go run ./cmd/bench n3 --tasks=extra        # T11-T13 (schema reading, index tuning); --tasks=all runs the nine
 go run ./cmd/bench judge --run=<id> [--also=<id>,<id>] [--max-cost=<usd>] [--repeat=<n>]  # LLM judge of the stored n3 answers, blind pairwise then error attribution: costs model calls
 go run ./cmd/bench judge --calibration=results/<id>/calibration.md  # agreement of your filled calibration sheet with the judge (no call)
 go run ./cmd/bench report                  # write report.md from the latest run
+go run ./cmd/bench compare                 # write compare.md: one column per measured server, from the raw results
 go run ./cmd/bench all                     # up, load, n1, n2, security, ops, report (never n3)
 python3 charts.py results/<id> ../assets/bench  # the three charts of BENCHMARK.md; needs matplotlib, nothing else does
 ```
@@ -91,6 +93,17 @@ Queries run with `docker compose -f compose.yml exec -T pg psql -U postgres -d b
 - pgEdge (`--with-pgedge`) is optional and untested: it calls its `query_database` tool for S01-S06 and reads `skipped` when `pgedge-postgres-mcp` is not installed.
 - Verdict: GO needs N3 success, N3 tokens (non-regression: at most crystaldba's; the output-size gain is judged on N2), N3 turns and N2 trap detection met and no criterion `unverified`; the other N2 targets are reported in the verdict table but do not change the verdict.
 
+## Levels that compare every server
+
+`report.md` is the go/no-go of postgres-dba-mcp against crystaldba: two columns and a verdict. `compare.md` (`go run ./cmd/bench compare [--run=<id>]`) is the cross-server synthesis, generated from the same raw JSON: one column per measured server for tool definitions, scenarios, attacks, false refusals, memory, start-up, concurrency, session accumulation and the total per task. They are two commands over one run because folding eight columns into the verdict table would make both unreadable.
+
+- **Dollars.** `internal/tokens/price.go` holds one row per model: input and output price per million tokens, the date they were read and their source. Every dollar figure `compare.md` prints says at what price and on what date it was computed. To update a price, change that row and its date; nothing else reads one.
+- **`session`.** A fixed sequence of ten DBA intentions (schemas, tables, one table in detail, table sizes, the plan of a slow query, the costliest queries, the indexes, then three targeted reads). Each server answers with its best tool; a server that has no such tool falls back to `execute_sql` with the same SQL as every other server that falls back, and that SQL is written to `session.json`. The figure is the context at turn N: the tool definitions, which every request carries, plus every answer from turn 1 to N. It calls no model and costs nothing.
+- **`ops` concurrency.** One method for every server: one process, one stdio session, 50 `execute_sql` calls in flight at once, counting failures and the p95. It replaces the old measure, which sent 50 calls to postgres-dba-mcp alone over streamable HTTP and compared nothing. A server that cannot answer concurrent calls on one session is recorded as such, not measured another way. postgres-dba-mcp is measured on the linux image, like its RSS: the host build parses SQL through the WASM libpg_query, whose module compiles on first use (about 880 ms, started in the background at start-up), and the session opens the instant the process answers `initialize`, so all 50 calls would wait on that compilation; measured on the native build the p95 is 953 ms cold and 26 ms once one call has gone through, and on the image 22 ms cold. The containerised servers finish their own start-up before they answer `initialize` at all, so none of them is charged for it.
+- **`security` false refusals.** The 47 legitimate queries are replayed through every measured server, not through postgres-dba-mcp alone; `security.json` holds `legit` as a map by server. An older `security.json` with a `legit` array no longer loads.
+- **Facts are graded on the value, not the rendering.** `Fact` has a third form, a regular expression for the servers that answer in JSON, because DBHub and Toolbox render arrays, intervals and bytea differently from each other. A fact with no form for a server is not asked of it, as the SQLSTATE is not asked of crystaldba.
+- **The token counter understates JSON.** Without `ANTHROPIC_API_KEY` and without `--tokens=claude`, counts are `ceil(bytes/4)`. JSON tokenises more densely than CSV, so the estimate understates DBHub and Toolbox more than it understates postgres-dba-mcp's CSV: the bias runs against postgres-dba-mcp, which is the right way round for a comparison it is a party to, but it is a bias.
+
 ## DBHub 1.6.0
 
 `internal/servers/dbhub.go` registers four DBHub variants; `--servers=dba,dbhub` (and the others below) measures them on `n1`, `n2` and `security`. The image is pinned by digest, `bytebase/dbhub@sha256:ccb6afc0bc1f05c143e15c3c927eb11e8103d49b06947900c33e337f2453f5e3` (1.6.0), and runs on the bench network like crystaldba, as `bench_ro`.
@@ -112,12 +125,9 @@ The four built-in tools are `execute_sql`, `search_objects`, `explain_sql` and `
 
 `ClassifyDBHub` reads the `code` field of DBHub's error JSON: `READONLY_VIOLATION` is the read-only gate answering before the database is touched (refused), every other code means the statement reached Postgres (`EXECUTION_ERROR`: `permission denied for function lo_import`, `cannot execute SELECT FOR UPDATE in a read-only transaction`) and is counted as failed at execution.
 
-`go run ./cmd/dbhubmeta --run=<id>` writes `results/<run>/dbhub.json` after `n1`: image, digest, the version the server reports, the command line and the `dbhub.toml` of every variant, the tools it exposes with the token cost of each definition, and the environment read back from `n1.json`. `n1` gives the total for the same tool sets; this is the per-tool breakdown it does not print.
+`go run ./cmd/toolmeta --run=<id>` writes `results/<run>/dbhub.json` after `n1`: image and digest, the version the server reports, the command line and the `dbhub.toml` of every variant, the tools it exposes with the token cost of each definition, and the environment read back from `n1.json`. `n1` gives the total for the same tool sets; this is the per-tool breakdown it does not print. It takes any registered server, so `--servers=dba --out=dba` writes the same breakdown for postgres-dba-mcp.
 
-Two limits of the harness show up on DBHub and would need a change to shared files:
-
-- `Fact` has one form for postgres-dba-mcp and one for crystaldba (`internal/scenarios/facts.go`), and anything else is graded against the postgres-dba-mcp CSV form. DBHub answers in indented JSON, so S02, S04, S05, S06 and S07 are marked incorrect on rendering, not on content. `Truncated()` only knows the `-- … truncated` footer and the `…[+` cell marker, so DBHub's `"truncated": true` is not seen and S02, S03 and S04 read `truncation missing`.
-- `Runner.measure` calls a scenario's setup steps by their canonical tool name without passing them through `Spec.ToolName`, so S21 fails with `Tool explain_query not found` on `dbhub-4tools`.
+Three limits of the harness used to show up on DBHub; all three are fixed. `Fact` now has a JSON form, so S02, S04, S05, S06 and S07 are graded on content; `Spec.Truncated` lets DBHub say that it signals a cut result with `"truncated": true`, so S02 and S03 read `signalled`; and the setup steps go through `Spec.ToolName`, so S21 runs on `dbhub-4tools`. What remains is not a harness limit: DBHub never shortens a cell, so S04 reads `truncation missing` for every DBHub variant, and `explain_sql` ignores `analyze`, so S14 finds no actual rows.
 ## MCP Toolbox 1.16.0
 
 Two variants, both from the image pinned by digest in `internal/servers/toolbox.go`
