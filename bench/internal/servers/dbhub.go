@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -98,8 +99,16 @@ func dbhubSpec(argv []string, name string, tools map[string]string) Spec {
 		Container: name,
 		Tools:     tools,
 		Classify:  ClassifyDBHub,
+		Truncated: TruncatedDBHub,
 	}
 }
+
+// reDBHubTruncated matches the field DBHub sets in its result JSON when max_rows cut the result.
+var reDBHubTruncated = regexp.MustCompile(`"truncated"\s*:\s*true`)
+
+// TruncatedDBHub reports whether a DBHub answer says it cut the result. DBHub signals it as a `"truncated": true`
+// field of the JSON it returns, not as a footer line, so the default reading never sees it.
+func TruncatedDBHub(text string) bool { return reDBHubTruncated.MatchString(text) }
 
 // ClassifyDBHub classifies a DBHub execute_sql answer. Every failure is the indented JSON of its error helper, with a
 // `code` field: READONLY_VIOLATION is the one the read-only gate raises before touching the database, every other

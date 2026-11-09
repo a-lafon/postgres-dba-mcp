@@ -233,7 +233,7 @@ func renderSecurity(sb *strings.Builder, in Inputs) {
 	tbl(sb, []string{"Server", "Cases", "refused", "failed at execution", "executed", "with side effect"}, rows)
 	s := SummarizeSecurity(in.Sec)
 	fmt.Fprintf(sb, "postgres-dba-mcp: %d attack cases not refused or failed at execution, %d with a side effect, %d false refusals on legit.sql (%d cases). Target: 0 / 0 / 0.\n\n",
-		s.NotRefused, s.SideEffects, s.FalseRefs, len(in.Sec.Legit))
+		s.NotRefused, s.SideEffects, s.FalseRefs, len(in.Sec.Legit[results.DBA]))
 
 	sb.WriteString("crystaldba on the function-in-FROM cases (`fn-*-from`, CVE-2026-85620), a reported finding that does not fail the bench:\n\n")
 	var fn [][]string
@@ -402,9 +402,11 @@ func renderSkipped(sb *strings.Builder, in Inputs) {
 		}
 	}
 	if in.Sec != nil {
-		for _, c := range in.Sec.Legit {
-			if c.Class == results.ClassRefused {
-				lines = append(lines, fmt.Sprintf("- false refusal on legit.sql: %s (%s)", c.ID, c.Text))
+		for _, server := range scenarios.Sorted(in.Sec.Legit) {
+			for _, c := range in.Sec.Legit[server] {
+				if c.Class == results.ClassRefused {
+					lines = append(lines, fmt.Sprintf("- false refusal on legit.sql: %s on %s (%s)", c.ID, server, c.Text))
+				}
 			}
 		}
 	}

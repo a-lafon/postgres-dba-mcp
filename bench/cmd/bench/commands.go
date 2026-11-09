@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -196,11 +197,16 @@ func (s *session) specs(t servers.Target) ([]servers.Spec, error) {
 	if s.opts.servers != "" {
 		names = strings.Split(s.opts.servers, ",")
 	}
+	return specsOf(names, t, s.bin())
+}
+
+// specsOf builds the spec of each named server against t.
+func specsOf(names []string, t servers.Target, bin string) ([]servers.Spec, error) {
 	out := make([]servers.Spec, 0, len(names))
 	for _, name := range names {
 		switch name {
 		case results.DBA:
-			out = append(out, servers.DBA(s.bin(), t.DSN))
+			out = append(out, servers.DBA(bin, t.DSN))
 		case results.Crystal:
 			out = append(out, servers.Crystal(t.URI))
 		default:
@@ -311,11 +317,33 @@ func cmdN2Recheck(ctx context.Context, s *session) error {
 		return err
 	}
 	defer db.Close()
-	r := &scenarios.Runner{DB: db, OutDir: filepath.Join(dir, "n2")}
+	// The specs are rebuilt from the names in the results: a cell is graded with its own server's reading of a
+	// refusal and of a truncation signal, which a bare spec does not have.
+	specs, err := specsOf(n2Servers(n2), benchTarget(), s.bin())
+	if err != nil {
+		return err
+	}
+	r := &scenarios.Runner{DB: db, Specs: specs, OutDir: filepath.Join(dir, "n2")}
 	if n2.Rows, err = r.Recheck(ctx, n2.Rows); err != nil {
 		return err
 	}
 	return results.Save(dir, "n2", n2)
+}
+
+// n2Servers returns the servers an n2.json holds cells for.
+func n2Servers(n2 results.N2) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range n2.Rows {
+		for name := range r.Cells {
+			if !seen[name] {
+				seen[name] = true
+				out = append(out, name)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func cmdN2(ctx context.Context, s *session) error {
@@ -380,7 +408,7 @@ func cmdSecurity(ctx context.Context, s *session) error {
 		return err
 	}
 	defer r.Close(ctx)
-	out := results.Security{Env: l.env, Attacks: map[string][]results.SecurityCase{}}
+	out := results.Security{Env: l.env, Attacks: map[string][]results.SecurityCase{}, Legit: map[string][]results.SecurityCase{}}
 	specs, err := s.specs(fixtureTarget())
 	if err != nil {
 		return err
@@ -390,12 +418,10 @@ func cmdSecurity(ctx context.Context, s *session) error {
 			return err
 		}
 	}
-	// The legit corpus counts postgres-dba-mcp's own false refusals: it is replayed through it alone.
+	// The legit corpus counts the false refusals of every measured server, not only postgres-dba-mcp's.
 	for _, spec := range specs {
-		if spec.Name == results.DBA {
-			if out.Legit, err = r.Replay(ctx, spec, legit, false); err != nil {
-				return err
-			}
+		if out.Legit[spec.Name], err = r.Replay(ctx, spec, legit, false); err != nil {
+			return err
 		}
 	}
 	return results.Save(l.dir, "security", out)

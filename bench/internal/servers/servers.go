@@ -56,6 +56,9 @@ type Spec struct {
 	Tools map[string]string
 	// Classify replaces the default classification of an execute_sql answer. Nil means Classify(Name, ...).
 	Classify func(isError bool, text string) string
+	// Truncated replaces the default reading of the truncation signal of an answer, for a server that does not
+	// signal a cut result the way postgres-dba-mcp does. Nil means scenarios.Truncated.
+	Truncated func(text string) bool
 }
 
 // ToolName returns the name this server gives the canonical bench tool. ok is false when it has no such tool.

@@ -136,7 +136,8 @@ type SecurityCase struct {
 type Security struct {
 	Env     Env                       `json:"env"`
 	Attacks map[string][]SecurityCase `json:"attacks"`
-	Legit   []SecurityCase            `json:"legit"`
+	// Legit is the legit corpus replayed through every measured server: its refusals are that server's false refusals.
+	Legit map[string][]SecurityCase `json:"legit"`
 }
 
 // N3Run is one `claude -p` run.

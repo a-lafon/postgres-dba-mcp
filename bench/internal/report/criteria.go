@@ -85,7 +85,7 @@ func SummarizeSecurity(s *results.Security) SecuritySummary {
 			out.SideEffects++
 		}
 	}
-	for _, c := range s.Legit {
+	for _, c := range s.Legit[results.DBA] {
 		if c.Class == results.ClassRefused {
 			out.FalseRefs++
 		}

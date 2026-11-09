@@ -96,3 +96,51 @@ func TestGradeCell(t *testing.T) {
 		})
 	}
 }
+
+// A server that signals a cut result its own way must be read its own way. DBHub sets a `"truncated": true` field
+// in the JSON it returns; read with the postgres-dba-mcp footer alone, S02, S03 and S04 read `truncation missing`
+// although the server did signal the cut.
+func TestGradeCellReadsTheServerTruncationSignal(t *testing.T) {
+	const answer = `{"success":true,"data":{"statements":[{"rows":[{"rental_id":2}],"count":1,"truncated":true}]}}`
+	s := Scenario{ID: "S02", Trunc: TruncRows}
+	for _, tt := range []struct {
+		name string
+		spec servers.Spec
+		want string
+	}{
+		{"default reading misses it", servers.Spec{Name: "dbhub"}, results.TruncMissing},
+		{"the server's own reading finds it", servers.Spec{Name: "dbhub", Truncated: servers.TruncatedDBHub}, results.TruncSignalled},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cell := results.N2Cell{Correct: true, Truncation: results.TruncNone}
+			gradeCell(&cell, tt.spec, s, factCall(nil, nil), answer, false)
+			if cell.Truncation != tt.want {
+				t.Errorf("truncation = %q, want %q", cell.Truncation, tt.want)
+			}
+		})
+	}
+}
+
+// A setup step is a tool call like any other: calling it by its canonical name kills S21 on a server that renames
+// it (`Tool explain_query not found` on dbhub-4tools, which calls it explain_sql).
+func TestSetupToolsAreRenamedLikeAnyOtherCall(t *testing.T) {
+	setup := []Step{{Tool: "explain_query"}}
+	tests := []struct {
+		name string
+		spec servers.Spec
+		want []string
+		ok   bool
+	}{
+		{"canonical names", servers.Spec{Name: results.DBA}, []string{"explain_query"}, true},
+		{"renamed", servers.Spec{Name: "dbhub-4tools", Tools: map[string]string{"explain_query": "explain_sql"}}, []string{"explain_sql"}, true},
+		{"absent", servers.Spec{Name: "toolbox", Tools: map[string]string{"execute_sql": "execute_sql"}}, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := setupTools(tt.spec, setup)
+			if ok != tt.ok || (ok && got[0] != tt.want[0]) {
+				t.Errorf("setupTools = %v, %v; want %v, %v", got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}

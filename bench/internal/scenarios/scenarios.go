@@ -241,6 +241,8 @@ func badColumn(ctx context.Context, db *pgxpool.Pool) ([]Fact, error) {
 	if !errors.As(err, &pe) {
 		return nil, fmt.Errorf("reference query SELECT nme FROM film did not fail with a Postgres error: %v", err)
 	}
+	// The SQLSTATE has no JSON form on purpose: neither JSON server reports the Postgres error code, and
+	// crystaldba is not asked for it either. The message is what every server must relay.
 	facts := []Fact{{DBA: "(SQLSTATE " + pe.Code + ")"}, Same(pe.Message)}
 	if pe.Hint != "" {
 		facts = append(facts, Same(pe.Hint))
@@ -300,7 +302,8 @@ func rentalFacts(ctx context.Context, db *pgxpool.Pool) ([]Fact, error) {
 		return nil, fmt.Errorf("reference foreign keys: %w", err)
 	}
 	for _, f := range fks {
-		facts = append(facts, Fact{DBA: fmt.Sprintf("→ %s(%s)", f.Table, f.Column), Crystal: f.Name})
+		// A JSON server names the constraint, as crystaldba does, rather than drawing the reference.
+		facts = append(facts, Fact{DBA: fmt.Sprintf("→ %s(%s)", f.Table, f.Column), Crystal: f.Name, JSON: regexp.QuoteMeta(f.Name)})
 	}
 	return facts, nil
 }
@@ -367,8 +370,11 @@ func explainAnalyze() Scenario {
 		}
 		return Call{Args: map[string]any{"sql": q, "analyze": true}, Check: func(server, text string) Outcome {
 			// postgres-dba-mcp prints counts with Approx (2.5k), crystaldba prints them exactly.
-			facts := []Fact{{DBA: "actual rows ", Crystal: fmt.Sprintf("Rows: %d, Loops", n)}, {DBA: "execution ", Crystal: "Execution Time"},
-				{DBA: "(actual ", Crystal: "[Actual:"}, Same("Seq Scan")}
+			facts := []Fact{
+				{DBA: "actual rows ", Crystal: fmt.Sprintf("Rows: %d, Loops", n), JSON: `(?i)actual[ _]rows`},
+				{DBA: "execution ", Crystal: "Execution Time", JSON: `(?i)execution[ _]time`},
+				{DBA: "(actual ", Crystal: "[Actual:", JSON: `(?i)actual[ _]loops|\(actual `},
+				Same("Seq Scan")}
 			return Outcome{Missing: Missing(server, text, facts)}
 		}}, nil
 	}}
