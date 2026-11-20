@@ -58,9 +58,14 @@ type Case struct {
 	Trails   map[string]Trail  // by server; only the attribution pass reads it
 }
 
-// Judge runs the cases. Call is the model call; Claude is the real one.
+// CallFunc is one model call.
+type CallFunc = func(ctx context.Context, prompt string) (tokens.Result, error)
+
+// Judge runs the cases. Call is the model call of the pairwise and attribution passes; Models are the judges of
+// Grade, by model id. Claude makes the real ones.
 type Judge struct {
-	Call     func(ctx context.Context, prompt string) (tokens.Result, error)
+	Call     CallFunc
+	Models   map[string]CallFunc
 	Dir      string    // where the raw replies are kept, so that an interrupted run resumes without paying again
 	Log      io.Writer // progress
 	Budget   float64   // stop above this many USD; 0 means no limit
@@ -297,7 +302,7 @@ func ask[T any](ctx context.Context, j *Judge, file, prompt string, parse func(s
 	var zero T
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
-		res, err := j.reply(ctx, file, prompt)
+		res, err := j.reply(ctx, j.Call, file, prompt)
 		if err != nil {
 			return zero, err
 		}
@@ -306,13 +311,13 @@ func ask[T any](ctx context.Context, j *Judge, file, prompt string, parse func(s
 			return v, nil
 		}
 		lastErr = err
-		_ = os.Remove(file)
+		j.discard(file)
 	}
 	return zero, lastErr
 }
 
-// reply returns the model reply kept in file, or asks the model and keeps it.
-func (j *Judge) reply(ctx context.Context, file, prompt string) (tokens.Result, error) {
+// reply returns the model reply kept in file, or asks the model through call and keeps it.
+func (j *Judge) reply(ctx context.Context, call CallFunc, file, prompt string) (tokens.Result, error) {
 	if b, err := os.ReadFile(file); err == nil {
 		var res struct {
 			Text, Model string
@@ -332,7 +337,7 @@ func (j *Judge) reply(ctx context.Context, file, prompt string) (tokens.Result, 
 	if j.Log != nil {
 		_, _ = fmt.Fprintf(j.Log, "judge %s\n", strings.TrimSuffix(filepath.Base(file), ".json"))
 	}
-	res, err := j.Call(ctx, prompt)
+	res, err := call(ctx, prompt)
 	if err != nil {
 		return res, err
 	}
@@ -363,4 +368,12 @@ func (j *Judge) record(file, model string, cost float64) {
 		j.paid[file] = true
 		j.spent += cost
 	}
+}
+
+// discard removes a reply that did not parse, so that the next reply kept in file is asked for and paid again.
+func (j *Judge) discard(file string) {
+	_ = os.Remove(file)
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	delete(j.paid, file)
 }
