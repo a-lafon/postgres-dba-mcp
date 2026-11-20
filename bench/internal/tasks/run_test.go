@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -54,6 +56,10 @@ func TestResume(t *testing.T) {
 	plan := Plan(ts, pick(t, "dba,crystal"), 1, "ro")
 	// The first run of an earlier, interrupted invocation is on disk.
 	if err := results.SaveTaskRun(dir, results.TaskRun{Task: "A01", Arm: "ro", Server: "dba", Rep: 1, Solved: true}); err != nil {
+		t.Fatal(err)
+	}
+	// Its MCP config sits next to it, as the real runner writes it: not a run.
+	if err := os.WriteFile(filepath.Join(dir, results.TasksDir, "A01-ro-dba-1.mcp.json"), []byte(`{"mcpServers":{}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var ran []string

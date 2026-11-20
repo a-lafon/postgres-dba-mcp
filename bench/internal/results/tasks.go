@@ -117,7 +117,7 @@ func LoadTaskRuns(dir string) ([]TaskRun, error) {
 	}
 	var runs []TaskRun
 	for _, e := range ents {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasSuffix(e.Name(), ".mcp.json") { // .mcp.json: the run's MCP config
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(dir, TasksDir, e.Name()))
