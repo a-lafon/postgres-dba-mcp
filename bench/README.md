@@ -32,6 +32,7 @@ go run ./cmd/bench n3                      # 6 agent tasks with `claude -p`: cos
 go run ./cmd/bench n3 --tasks=extra        # T11-T13 (schema reading, index tuning); --tasks=all runs the nine
 go run ./cmd/bench judge --run=<id> [--also=<id>,<id>] [--max-cost=<usd>] [--repeat=<n>]  # LLM judge of the stored n3 answers, blind pairwise then error attribution: costs model calls
 go run ./cmd/bench judge --calibration=results/<id>/calibration.md  # agreement of your filled calibration sheet with the judge (no call)
+go run ./cmd/bench tasks --reps=1          # part A of PROTOCOL.md: A01-A15 on the five servers, arm W too (--arm=ro|w|all, --only=A01,...); restores the snapshot before each run; costs model calls; --dry-run prints the commands; --run=<id> resumes
 go run ./cmd/bench report                  # write report.md from the latest run
 go run ./cmd/bench all                     # up, load, n1, n2, security, ops, report (never n3)
 python3 charts.py results/<id> ../assets/bench  # the three charts of BENCHMARK.md; needs matplotlib, nothing else does
