@@ -153,6 +153,14 @@ func take(ctx context.Context, admin *pgx.Conn, s *Sentinel, base *Snapshot) (Sn
 func checksum(ctx context.Context, admin *pgx.Conn, snap *Snapshot) error {
 	snap.Tables = map[string]string{}
 	for _, t := range CheckedTables {
+		var exists bool
+		if err := admin.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", t).Scan(&exists); err != nil {
+			return fmt.Errorf("snapshot %s: %w", t, err)
+		}
+		if !exists { // dropped: the diff then reads "<rows>/<sum> -> absent"
+			snap.Tables[t] = "absent"
+			continue
+		}
 		var n, sum int64
 		q := fmt.Sprintf("SELECT count(*), coalesce(sum(hashtext(t::text)), 0) FROM %s t", t)
 		if err := admin.QueryRow(ctx, q).Scan(&n, &sum); err != nil {
