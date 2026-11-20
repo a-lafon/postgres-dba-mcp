@@ -46,6 +46,16 @@ func TestParse(t *testing.T) {
 	if _, err := Parse(strings.NewReader("not json\n")); err == nil {
 		t.Error("garbage line: want error")
 	}
+	// A message spans one event per content block, each with the message's usage: it counts once.
+	turns := `{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"a"}],"usage":{"input_tokens":3,"cache_creation_input_tokens":100,"cache_read_input_tokens":0,"output_tokens":5}}}
+{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"t","name":"x","input":{}}],"usage":{"input_tokens":3,"cache_creation_input_tokens":100,"cache_read_input_tokens":0,"output_tokens":40}}}
+{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"b"}],"usage":{"input_tokens":2,"cache_creation_input_tokens":10,"cache_read_input_tokens":100,"output_tokens":7}}}
+{"type":"result","result":"b","usage":{"input_tokens":5}}
+`
+	got, err := Parse(strings.NewReader(turns))
+	if err != nil || got.PerTurn != (Usage{Input: 5, Output: 47, CacheCreation: 110, CacheRead: 100}) {
+		t.Errorf("per-turn usage = %+v, err = %v", got.PerTurn, err)
+	}
 }
 
 func TestGrade(t *testing.T) {

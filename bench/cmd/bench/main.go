@@ -48,6 +48,10 @@ commands:
   report [--fail-on-blocking]
                              write report.md from the latest run
   all                        up, load, n1, n2, security, ops, then report (never n3)
+  tasks [--reps=<n>] [--arm=ro|w|all] [--only=A01,...] [--dry-run]
+                             part A of PROTOCOL.md: the 15 agent tasks with claude -p on every --servers (default all
+                             five), the database restored before each run (costs model calls); --dry-run prints the
+                             claude command lines and MCP configs only; run again with --run=<id> to resume
 
 flags:
   --run=<id>                 run id of the results folder (default: a new UTC timestamp; report: the latest run)
@@ -82,9 +86,12 @@ type options struct {
 	also        string
 	maxCost     float64
 	repeat      int
+	reps        int    // tasks: repetitions per task and server
+	arm         string // tasks: ro, w or all
+	only        string // tasks: comma-separated task ids
 	calibration string
 	input       string           // judge2 and calibration: the judge input file
-	dryRun      bool             // judge2: print the prompts, call nothing
+	dryRun      bool             // judge2 and tasks: print what would run, call nothing
 	sub         string           // calibration: export or import
 	servers     []servers.Pinned // --servers, in the order given
 }
@@ -118,6 +125,9 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	fs.StringVar(&o.also, "also", "", "")
 	fs.Float64Var(&o.maxCost, "max-cost", 0, "")
 	fs.IntVar(&o.repeat, "repeat", 1, "")
+	fs.IntVar(&o.reps, "reps", 5, "")
+	fs.StringVar(&o.arm, "arm", "all", "")
+	fs.StringVar(&o.only, "only", "", "")
 	fs.StringVar(&o.calibration, "calibration", "", "")
 	fs.StringVar(&o.input, "input", "", "")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "")
@@ -127,11 +137,16 @@ func parse(args []string, stderr io.Writer) (options, error) {
 		return o, errUsage
 	}
 	if fs.NArg() > 0 || o.scale <= 0 || o.maxCost < 0 || o.repeat < 1 || (o.tokens != "" && o.tokens != "claude") ||
-		(o.tasks != "" && o.tasks != "core" && o.tasks != "extra" && o.tasks != "all") {
+		(o.tasks != "" && o.tasks != "core" && o.tasks != "extra" && o.tasks != "all") ||
+		o.reps < 1 || (o.arm != "ro" && o.arm != "w" && o.arm != "all") {
 		return o, errUsage
 	}
+	def := defaultServers
+	if o.command == "tasks" { // part A measures the five servers of protocol v2
+		def = servers.Names()
+	}
 	var err error
-	if o.servers, err = servers.Select(*list, defaultServers); err != nil {
+	if o.servers, err = servers.Select(*list, def); err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return o, errUsage
 	}
@@ -152,6 +167,7 @@ var commands = map[string]func(context.Context, *session) error{
 	"calibration": cmdCalibration2,
 	"ops":         cmdOps,
 	"report":      cmdReport,
+	"tasks":       cmdTasks,
 	"all":         cmdAll,
 }
 
