@@ -53,6 +53,13 @@ commands:
                              five), the database restored before each run (costs model calls); --dry-run prints the
                              claude command lines and MCP configs only; run again with --run=<id> to resume
 
+protocol v2 (PROTOCOL.md), every server of --servers (default: all five), no model call:
+  receive                    part B: B1-B7 through each server's SQL tool as bench_ro (receive.json)
+  readonly [--agent-sql=<file>]
+                             part C: the corpora through each server's read-only mode as bench_owner (readonly.json);
+                             restores the bench database before each server, after every lasting effect and at the
+                             end; --agent-sql adds the SQL of part A, in the corpus format (-- case: <id> <category>)
+
 flags:
   --run=<id>                 run id of the results folder (default: a new UTC timestamp; report: the latest run)
   --tokens=claude            count tokens through claude -p, without any API key (n1, n2, all)
@@ -93,6 +100,7 @@ type options struct {
 	input       string           // judge2 and calibration: the judge input file
 	dryRun      bool             // judge2 and tasks: print what would run, call nothing
 	sub         string           // calibration: export or import
+	agentSQL    string           // readonly: part A SQL to replay as legitimate statements
 	servers     []servers.Pinned // --servers, in the order given
 }
 
@@ -131,6 +139,7 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	fs.StringVar(&o.calibration, "calibration", "", "")
 	fs.StringVar(&o.input, "input", "", "")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "")
+	fs.StringVar(&o.agentSQL, "agent-sql", "", "")
 	list := fs.String("servers", "", "")
 	if err := fs.Parse(args[1:]); err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
@@ -141,11 +150,11 @@ func parse(args []string, stderr io.Writer) (options, error) {
 		o.reps < 1 || (o.arm != "ro" && o.arm != "w" && o.arm != "all") {
 		return o, errUsage
 	}
+	var err error
 	def := defaultServers
-	if o.command == "tasks" { // part A measures the five servers of protocol v2
+	if v2Commands[o.command] {
 		def = servers.Names()
 	}
-	var err error
 	if o.servers, err = servers.Select(*list, def); err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return o, errUsage
@@ -168,6 +177,8 @@ var commands = map[string]func(context.Context, *session) error{
 	"ops":         cmdOps,
 	"report":      cmdReport,
 	"tasks":       cmdTasks,
+	"receive":     cmdReceive,
+	"readonly":    cmdReadOnly,
 	"all":         cmdAll,
 }
 
