@@ -35,6 +35,16 @@ commands:
                              to the tool calls (calls claude -p, costs model calls); also writes calibration.md;
                              --also reads the tasks that --run lacks from other runs, --repeat judges each pair n times
   judge --calibration=<file> compare the filled calibration sheet with the judge's verdicts (no call)
+  judge2 --run=<id> [--input=<file>] [--max-cost=<usd>] [--dry-run]
+                             protocol v2 judge: each answer of --input (default <run>/judge-input.json, a JSON array
+                             of judge.Item) checked against its expected facts, blind, by Opus 5.5 and Sonnet 5.5
+                             (calls claude -p twice per answer); writes judge2.json; --dry-run prints the prompts only
+  calibration export --run=<id> [--input=<file>]
+                             write calibration2.md (40 blind answers) and calibration2.csv (the grid to fill) from
+                             judge2.json, with calibration2-key.json (no call)
+  calibration import --run=<id>
+                             read the filled calibration2.csv and write calibration.json: Cohen's kappa of each judge
+                             against the maintainer and between the judges (no call)
   report [--fail-on-blocking]
                              write report.md from the latest run
   all                        up, load, n1, n2, security, ops, then report (never n3)
@@ -73,6 +83,9 @@ type options struct {
 	maxCost     float64
 	repeat      int
 	calibration string
+	input       string           // judge2 and calibration: the judge input file
+	dryRun      bool             // judge2: print the prompts, call nothing
+	sub         string           // calibration: export or import
 	servers     []servers.Pinned // --servers, in the order given
 }
 
@@ -85,6 +98,12 @@ func parse(args []string, stderr io.Writer) (options, error) {
 		return o, errUsage
 	}
 	o.command = args[0]
+	if o.command == "calibration" {
+		if len(args) < 2 || (args[1] != "export" && args[1] != "import") {
+			return o, errUsage
+		}
+		o.sub, args = args[1], append([]string{o.command}, args[2:]...)
+	}
 	fs := flag.NewFlagSet(o.command, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.StringVar(&o.runID, "run", "", "")
@@ -100,6 +119,8 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	fs.Float64Var(&o.maxCost, "max-cost", 0, "")
 	fs.IntVar(&o.repeat, "repeat", 1, "")
 	fs.StringVar(&o.calibration, "calibration", "", "")
+	fs.StringVar(&o.input, "input", "", "")
+	fs.BoolVar(&o.dryRun, "dry-run", false, "")
 	list := fs.String("servers", "", "")
 	if err := fs.Parse(args[1:]); err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
@@ -118,18 +139,20 @@ func parse(args []string, stderr io.Writer) (options, error) {
 }
 
 var commands = map[string]func(context.Context, *session) error{
-	"up":       cmdUp,
-	"load":     cmdLoad,
-	"snapshot": cmdSnapshot,
-	"restore":  cmdRestore,
-	"n1":       cmdN1,
-	"n2":       cmdN2,
-	"security": cmdSecurity,
-	"n3":       cmdN3,
-	"judge":    cmdJudge,
-	"ops":      cmdOps,
-	"report":   cmdReport,
-	"all":      cmdAll,
+	"up":          cmdUp,
+	"load":        cmdLoad,
+	"snapshot":    cmdSnapshot,
+	"restore":     cmdRestore,
+	"n1":          cmdN1,
+	"n2":          cmdN2,
+	"security":    cmdSecurity,
+	"n3":          cmdN3,
+	"judge":       cmdJudge,
+	"judge2":      cmdJudge2,
+	"calibration": cmdCalibration2,
+	"ops":         cmdOps,
+	"report":      cmdReport,
+	"all":         cmdAll,
 }
 
 func run(ctx context.Context, args []string, getenv func(string) string, stdout, stderr io.Writer) int {
