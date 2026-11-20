@@ -440,26 +440,35 @@ func cmdN3(ctx context.Context, s *session) error {
 	return results.Save(l.dir, "n3", results.N3{Env: l.env, Runs: runs})
 }
 
+// cmdOps measures the --servers from their registry images, postgres-dba-mcp's release image included, and writes
+// ops.json and the table ops.md, which it also prints.
 func cmdOps(ctx context.Context, s *session) error {
-	if err := s.defaultOnly("ops"); err != nil {
-		return err
-	}
 	l, err := s.begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer l.close()
-	if !servers.ImageExists(ctx) {
-		if err := s.buildImage(ctx); err != nil {
+	l.env.Servers = nil // begin records the binary built from the repository; ops runs the release image
+	for _, p := range s.opts.servers {
+		if err := p.Prepare(ctx, s.benchDir); err != nil {
 			return err
 		}
+		l.env.Servers = append(l.env.Servers, p.Env())
 	}
-	out, err := ops.Run(ctx, ops.Options{DBA: s.dbaSpec(), Image: servers.DBAImage(servers.BenchURI), Crystal: s.crystalSpec(), Bin: s.bin(), DSN: servers.BenchDSN, Pagila: l.env.Pagila, Log: s.err})
+	out, err := ops.Run(ctx, ops.Options{Servers: s.opts.servers, URI: servers.BenchURI, Pagila: l.env.Pagila, Log: s.err})
 	if err != nil {
 		return err
 	}
 	out.Env = l.env
-	return results.Save(l.dir, "ops", out)
+	if err := results.Save(l.dir, "ops", out); err != nil {
+		return err
+	}
+	table := ops.Table(out)
+	if err := os.WriteFile(filepath.Join(l.dir, "ops.md"), []byte(table), 0o644); err != nil {
+		return fmt.Errorf("write ops.md: %w", err)
+	}
+	_, _ = fmt.Fprint(s.out, table)
+	return nil
 }
 
 func cmdReport(_ context.Context, s *session) error {
