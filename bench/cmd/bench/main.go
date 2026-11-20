@@ -49,9 +49,10 @@ commands:
                              write report.md from the latest run
   all                        up, load, n1, n2, security, ops, then report (never n3)
   tasks [--reps=<n>] [--arm=ro|w|all] [--only=A01,...] [--dry-run]
-                             part A of PROTOCOL.md: the 15 agent tasks with claude -p on every --servers (default all
-                             five), the database restored before each run (costs model calls); --dry-run prints the
-                             claude command lines and MCP configs only; run again with --run=<id> to resume
+                             part A of PROTOCOL.md: the 15 agent tasks with claude -p on every --servers (default dba
+                             and crystal, from their registry images), the database restored before each run (costs
+                             model calls); --dry-run prints the claude command lines and MCP configs only; run again
+                             with --run=<id> to resume
   tasks --regrade --run=<id> [--only=A01,...]
                              grade again the stored part A runs with the rubrics of now and print the solved table;
                              no model or server call, but restores the database to compute the reference
@@ -155,7 +156,7 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	}
 	var err error
 	def := defaultServers
-	if v2Commands[o.command] {
+	if v2Commands[o.command] && o.command != "tasks" {
 		def = servers.Names()
 	}
 	if o.servers, err = servers.Select(*list, def); err != nil {

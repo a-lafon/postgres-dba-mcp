@@ -15,8 +15,9 @@ import (
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
 )
 
-// v2Commands are the commands of protocol v2, which measure the --servers of the registry (default: all five) in
-// their registry configuration, the release image of postgres-dba-mcp included.
+// v2Commands are the commands of protocol v2, which measure the --servers of the registry in their registry
+// configuration, the release image of postgres-dba-mcp included: all five by default for parts B and C, dba and
+// crystal for part A (decision D7).
 var v2Commands = map[string]bool{"tasks": true, "receive": true, "readonly": true}
 
 // targets returns the --servers as registry containers connected to uri, each with its memory capped, and records them

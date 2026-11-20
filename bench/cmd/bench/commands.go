@@ -340,7 +340,18 @@ func cmdN2(ctx context.Context, s *session) error {
 	}
 	defer l.close()
 	defer s.logCost(l.counter)
-	specs := []servers.Spec{s.dbaSpec(), s.crystalSpec()}
+	// The release image of postgres-dba-mcp, the one part A runs (PROTOCOL.md §5), not the build of the repository.
+	dba, _ := servers.Lookup(results.DBA)
+	if err := dba.Prepare(ctx, s.benchDir); err != nil {
+		return err
+	}
+	l.env.DBAVersion, l.env.DBACommit = dba.Version, "release image"
+	for i := range l.env.Servers {
+		if l.env.Servers[i].Name == results.DBA {
+			l.env.Servers[i] = dba.Env()
+		}
+	}
+	specs := []servers.Spec{dba.Spec(servers.BenchURI), s.crystalSpec()}
 	same, err := sameRole(ctx, l.db, specs)
 	if err != nil {
 		return err
