@@ -41,8 +41,9 @@ type Transcript struct {
 	Model        string // model of the session, from the system init event
 	DurationMS   int
 	IsError      bool
-	// PerTurn is the usage of every assistant message (one per model turn) summed, each message counted once.
-	PerTurn Usage
+	// Usage is the result event's usage: every turn of the session summed. The usage of the assistant events is not
+	// summed instead: their output count is the one known when the event was sent, below the final one.
+	Usage Usage
 }
 
 type block struct {
@@ -56,7 +57,7 @@ type block struct {
 	IsError   bool            `json:"is_error"`
 }
 
-// Usage is the token usage of one model call, or a sum of them.
+// Usage is the token usage of a session.
 type Usage struct {
 	Input         int `json:"input_tokens"`
 	Output        int `json:"output_tokens"`
@@ -71,7 +72,6 @@ type event struct {
 	Message struct {
 		ID      string  `json:"id"`
 		Content []block `json:"content"`
-		Usage   Usage   `json:"usage"`
 	} `json:"message"`
 	Result     string  `json:"result"`
 	IsError    bool    `json:"is_error"`
@@ -92,7 +92,6 @@ func Parse(r io.Reader) (Transcript, error) {
 	var seen bool
 	index := map[string]int{}                             // tool_use id -> position in tr.Calls
 	search, other := map[string]bool{}, map[string]bool{} // message id -> has a ToolSearch call, has another tool call
-	turns := map[string]Usage{}                           // message id -> its usage; a message spans several events
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -110,9 +109,6 @@ func Parse(r io.Reader) (Transcript, error) {
 				tr.Model = ev.Model
 			}
 		case "assistant":
-			u := turns[ev.Message.ID]
-			turns[ev.Message.ID] = Usage{max(u.Input, ev.Message.Usage.Input), max(u.Output, ev.Message.Usage.Output),
-				max(u.CacheCreation, ev.Message.Usage.CacheCreation), max(u.CacheRead, ev.Message.Usage.CacheRead)}
 			for _, b := range ev.Message.Content {
 				if b.Type == "tool_use" {
 					if b.Name == "ToolSearch" {
@@ -137,16 +133,11 @@ func Parse(r io.Reader) (Transcript, error) {
 			tr.Final, tr.IsError, tr.DurationMS, tr.Turns, tr.CostUSD = ev.Result, ev.IsError, ev.DurationMS, ev.NumTurns, ev.Cost
 			tr.InputTokens = ev.Usage.Input + ev.Usage.CacheCreation + ev.Usage.CacheRead
 			tr.OutputTokens = ev.Usage.Output
+			tr.Usage = ev.Usage
 		}
 	}
 	if err := sc.Err(); err != nil {
 		return tr, fmt.Errorf("read stream: %w", err)
-	}
-	for _, u := range turns {
-		tr.PerTurn.Input += u.Input
-		tr.PerTurn.Output += u.Output
-		tr.PerTurn.CacheCreation += u.CacheCreation
-		tr.PerTurn.CacheRead += u.CacheRead
 	}
 	for id := range search {
 		if !other[id] {

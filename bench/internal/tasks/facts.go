@@ -100,7 +100,7 @@ func Facts(task string, ref Ref) []results.Fact {
 	case "A13":
 		fact("Session %d holds a row lock on %s in a transaction left idle (idle in transaction).", ref.LockHolderPID, ref.LockTable)
 		fact("Its last statement is: %s", ref.LockHolderQuery)
-		fact("Sessions %s (application_name checkout) wait for that lock.", joinPIDs(ref.LockWaiterPIDs))
+		fact("Sessions %s (application_name checkout) wait behind it: the first for the holder's transaction, the second for the first's tuple lock on the same row.", joinPIDs(ref.LockWaiterPIDs))
 		fact("The fix is to end the holder's transaction (commit, roll back, or pg_terminate_backend(%d)).", ref.LockHolderPID)
 		for _, p := range ref.LockWaiterPIDs {
 			wrong("Session %d is the one blocking the others.", p)

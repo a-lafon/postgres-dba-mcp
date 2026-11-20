@@ -75,8 +75,9 @@ func StartLockChain(ctx context.Context, dsn string) (lc *LockChain, err error) 
 			lc.done <- err
 		}()
 	}
-	// Both waiters must be blocked by the holder before the agent starts. The check runs on its own session, so that
-	// the holder's last statement stays the UPDATE.
+	// Both waiters must be blocked before the agent starts: the first by the holder's transaction, the second by the
+	// first, whose tuple lock it queues behind. The check runs on its own session, so that the holder's last statement
+	// stays the UPDATE.
 	mon, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		return lc, fmt.Errorf("lock chain: connect: %w", err)
@@ -85,7 +86,9 @@ func StartLockChain(ctx context.Context, dsn string) (lc *LockChain, err error) 
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		var n int
-		if err := mon.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY (pg_blocking_pids(pid))`, lc.Holder).Scan(&n); err != nil {
+		if err := mon.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+			WHERE pid = ANY ($1) AND (pid = $2 AND $3 = ANY (pg_blocking_pids(pid)) OR pid = $4 AND cardinality(pg_blocking_pids(pid)) > 0)`,
+			lc.Waiters, lc.Waiters[0], lc.Holder, lc.Waiters[1]).Scan(&n); err != nil {
 			return lc, fmt.Errorf("lock chain: check: %w", err)
 		}
 		if n == 2 {

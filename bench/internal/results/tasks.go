@@ -41,7 +41,7 @@ type TaskToolCall struct {
 	IsError bool            `json:"is_error,omitempty"`
 }
 
-// TaskTokens are the tokens of a run, summed over its turns (the usage of every assistant message of the stream).
+// TaskTokens are the tokens of a run, summed over its turns: the usage of the stream's result event.
 type TaskTokens struct {
 	Input         int `json:"input"`          // uncached input
 	CacheCreation int `json:"cache_creation"` // input written to the cache

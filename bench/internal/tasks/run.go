@@ -82,8 +82,9 @@ func ClaudeArgs(question, mcpConfig string) []string {
 		"--setting-sources", "", "--no-session-persistence"}
 }
 
-// ClaudeEnv is added to the environment of claude: no CLAUDE.md of any level (managed, user, project) is read.
-var ClaudeEnv = []string{"CLAUDE_CODE_DISABLE_CLAUDE_MDS=1"}
+// ClaudeEnv is added to the environment of claude: no CLAUDE.md of any level (managed, user, project) is read, and no
+// auto-memory.
+var ClaudeEnv = []string{"CLAUDE_CODE_DISABLE_CLAUDE_MDS=1", "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1"}
 
 // MCPConfig is the --mcp-config of a run: one server, pg, started in its container as the registry says.
 func MCPConfig(spec servers.Spec) ([]byte, error) {
@@ -248,7 +249,7 @@ func (r *Runner) once(ctx context.Context, run Run) (rec results.TaskRun, err er
 	rec.Solved = Solved(rec.Checks)
 	rec.Facts = Facts(run.Task.ID, ref)
 	rec.Final, rec.Turns, rec.CostUSD, rec.Model = tr.Final, tr.Turns, tr.CostUSD, tr.Model
-	rec.Tokens = results.TaskTokens{Input: tr.PerTurn.Input, CacheCreation: tr.PerTurn.CacheCreation, CacheRead: tr.PerTurn.CacheRead, Output: tr.PerTurn.Output}
+	rec.Tokens = results.TaskTokens{Input: tr.Usage.Input, CacheCreation: tr.Usage.CacheCreation, CacheRead: tr.Usage.CacheRead, Output: tr.Usage.Output}
 	rec.ToolCalls = []results.TaskToolCall{}
 	for _, c := range tr.Calls {
 		rec.ToolCalls = append(rec.ToolCalls, results.TaskToolCall{Name: c.Name, Args: c.Input, IsError: c.IsError})
