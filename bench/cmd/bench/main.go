@@ -52,6 +52,9 @@ commands:
                              part A of PROTOCOL.md: the 15 agent tasks with claude -p on every --servers (default all
                              five), the database restored before each run (costs model calls); --dry-run prints the
                              claude command lines and MCP configs only; run again with --run=<id> to resume
+  tasks --regrade --run=<id> [--only=A01,...]
+                             grade again the stored part A runs with the rubrics of now and print the solved table;
+                             no model or server call, but restores the database to compute the reference
 
 protocol v2 (PROTOCOL.md), every server of --servers (default: all five), no model call:
   receive                    part B: B1-B7 through each server's SQL tool as bench_ro (receive.json)

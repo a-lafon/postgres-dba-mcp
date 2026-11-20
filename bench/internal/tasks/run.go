@@ -298,3 +298,116 @@ func shellJoin(args []string) string {
 	}
 	return strings.Join(q, " ")
 }
+
+// Regrade grades again the recorded runs of outDir whose task is in ts, from their stored transcripts and database
+// changes, with the rubrics and facts of now; ref is the reference of the restored database. It calls neither claude
+// nor a server. It rewrites each record and tasks.json, and returns every record of the folder.
+func Regrade(outDir string, ref Ref, ts []Task) ([]results.TaskRun, error) {
+	runs, err := results.LoadTaskRuns(outDir)
+	if err != nil {
+		return nil, err
+	}
+	for _, rec := range runs {
+		if !slices.ContainsFunc(ts, func(t Task) bool { return t.ID == rec.Task }) {
+			continue
+		}
+		f, err := os.Open(filepath.Join(outDir, filepath.FromSlash(rec.Transcript)))
+		if err != nil {
+			return nil, err
+		}
+		tr, perr := agent.Parse(f)
+		_ = f.Close()
+		tr.IsError = tr.IsError || perr != nil || rec.Error != ""
+		r := ref
+		if rec.Task == "A13" { // the lock chain is per run: its facts hold it
+			if r.LockHolderPID, r.LockTable, r.LockWaiterPIDs, err = lockFromFacts(rec.Facts); err != nil {
+				return nil, fmt.Errorf("%s: %w", rec.Key(), err)
+			}
+			r.LockHolderQuery = holderQuery
+		}
+		rec.Checks = Grade(rec.Task, tr, r, rec.DBChanges)
+		rec.Solved = Solved(rec.Task, rec.Arm, rec.Checks)
+		rec.Facts = Facts(rec.Task, r)
+		if err := results.SaveTaskRun(outDir, rec); err != nil {
+			return nil, err
+		}
+	}
+	var file results.Tasks
+	if _, err := results.Load(outDir, "tasks", &file); err != nil {
+		return nil, err
+	}
+	if file.Runs, err = results.LoadTaskRuns(outDir); err != nil {
+		return nil, err
+	}
+	return file.Runs, results.Save(outDir, "tasks", file)
+}
+
+// lockFromFacts reads back the lock chain of an A13 run from the facts Facts wrote for it.
+func lockFromFacts(facts []results.Fact) (holder int32, table string, waiters []int32, err error) {
+	for _, f := range facts {
+		if strings.HasPrefix(f.Text, "Session ") && holder == 0 {
+			if _, err := fmt.Sscanf(f.Text, "Session %d holds a row lock on %s", &holder, &table); err != nil {
+				return 0, "", nil, fmt.Errorf("lock holder fact %q: %w", f.Text, err)
+			}
+		}
+		if head, _, ok := strings.Cut(f.Text, " (application_name checkout)"); ok && strings.HasPrefix(head, "Sessions ") {
+			for _, p := range regexp.MustCompile(`\d+`).FindAllString(head, -1) {
+				n, _ := strconv.Atoi(p)
+				waiters = append(waiters, int32(n))
+			}
+		}
+	}
+	if holder == 0 || table == "" {
+		return 0, "", nil, errors.New("no lock holder in the recorded facts")
+	}
+	return holder, table, waiters, nil
+}
+
+// Table is the solved count per task and arm (rows) and server (columns), as markdown.
+func Table(runs []results.TaskRun) string {
+	var srvs, rows []string
+	type cell struct{ solved, n int }
+	cells := map[string]*cell{}
+	for _, r := range runs {
+		row := r.Task + " " + r.Arm
+		if !slices.Contains(srvs, r.Server) {
+			srvs = append(srvs, r.Server)
+		}
+		if !slices.Contains(rows, row) {
+			rows = append(rows, row)
+		}
+		c := cells[row+"|"+r.Server]
+		if c == nil {
+			c = &cell{}
+			cells[row+"|"+r.Server] = c
+		}
+		c.n++
+		if r.Solved {
+			c.solved++
+		}
+	}
+	var sb strings.Builder
+	sb.WriteString("| task | " + strings.Join(srvs, " | ") + " |\n|---|" + strings.Repeat("---|", len(srvs)) + "\n")
+	total := map[string]*cell{}
+	for _, row := range rows {
+		sb.WriteString("| " + row + " |")
+		for _, s := range srvs {
+			c := cells[row+"|"+s]
+			if c == nil {
+				sb.WriteString(" - |")
+				continue
+			}
+			if total[s] == nil {
+				total[s] = &cell{}
+			}
+			total[s].solved, total[s].n = total[s].solved+c.solved, total[s].n+c.n
+			fmt.Fprintf(&sb, " %d/%d |", c.solved, c.n)
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("| solved |")
+	for _, s := range srvs {
+		fmt.Fprintf(&sb, " %d/%d |", total[s].solved, total[s].n)
+	}
+	return sb.String() + "\n"
+}

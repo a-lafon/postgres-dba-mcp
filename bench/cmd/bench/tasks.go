@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/load"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
+	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/tasks"
 )
 
@@ -18,6 +22,9 @@ func cmdTasks(ctx context.Context, s *session) error {
 	ts, err := tasks.Select(s.opts.only)
 	if err != nil {
 		return err
+	}
+	if s.opts.regrade {
+		return regradeTasks(ctx, s, ts)
 	}
 	plan := tasks.Plan(ts, s.opts.servers, s.opts.reps, s.opts.arm)
 	if s.opts.dryRun {
@@ -61,4 +68,34 @@ func cmdTasks(ctx context.Context, s *session) error {
 	_, _ = fmt.Fprintf(s.err, "tasks: %d runs in %s (resume with --run=%s)\n", len(plan), dir, s.runID)
 	r := &tasks.Runner{BenchDir: s.benchDir, OutDir: dir, Env: env, Log: s.err, Claude: claude}
 	return r.Run(ctx, plan)
+}
+
+// regradeTasks grades again the stored runs of --run with the rubrics of now, and prints the solved table. It calls
+// no model and no server, but restores the database to compute the reference from the snapshot.
+func regradeTasks(ctx context.Context, s *session, ts []tasks.Task) error {
+	if s.opts.runID == "" {
+		return errors.New("tasks --regrade needs --run=<id>")
+	}
+	dir := filepath.Join(s.resultsRoot(), s.runID)
+	if _, err := os.Stat(filepath.Join(dir, "tasks.json")); err != nil {
+		return fmt.Errorf("no part A run in %s: %w", dir, err)
+	}
+	if err := load.Restore(ctx, s.benchDir, s.err); err != nil {
+		return err
+	}
+	admin, err := pgx.Connect(ctx, servers.BenchAdminDSN)
+	if err != nil {
+		return fmt.Errorf("connect as postgres: %w", err)
+	}
+	ref, err := tasks.LoadRef(ctx, admin)
+	_ = admin.Close(ctx)
+	if err != nil {
+		return err
+	}
+	runs, err := tasks.Regrade(dir, ref, ts)
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprint(s.out, tasks.Table(runs))
+	return nil
 }
