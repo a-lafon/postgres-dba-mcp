@@ -25,14 +25,15 @@ go run ./cmd/bench up                      # docker compose up (pg, fixture), bu
 go run ./cmd/bench load --scale=0.1        # data set, traps, Pagila, fixtures, ANALYZE, 120 s of pgbench, then the snapshot
 go run ./cmd/bench restore                 # put the snapshot back (stops and restarts pg; about 9 s at scale 1 on a Mac)
 go run ./cmd/bench n1                      # tool-definition tokens (informational); --servers=dba,crystal,dbhub,toolbox,reference
-go run ./cmd/bench n2                      # S01-S21, 5 runs per scenario and server
+go run ./cmd/bench n2                      # S01-S21, 5 runs per scenario and server; postgres-dba-mcp from its release image, as in part A
 go run ./cmd/bench security                # attack corpus replay through both servers
 go run ./cmd/bench ops                     # image size, cold start, memory of each --servers image (see Operations); published figures come from GitHub Actions
 go run ./cmd/bench n3                      # 6 agent tasks with `claude -p`: costs model calls, run by hand only
 go run ./cmd/bench n3 --tasks=extra        # T11-T13 (schema reading, index tuning); --tasks=all runs the nine
 go run ./cmd/bench judge --run=<id> [--also=<id>,<id>] [--max-cost=<usd>] [--repeat=<n>]  # LLM judge of the stored n3 answers, blind pairwise then error attribution: costs model calls
 go run ./cmd/bench judge --calibration=results/<id>/calibration.md  # agreement of your filled calibration sheet with the judge (no call)
-go run ./cmd/bench tasks --reps=1          # part A of PROTOCOL.md: A01-A15 on the five servers, arm W too (--arm=ro|w|all, --only=A01,...); restores the snapshot before each run; costs model calls; --dry-run prints the commands; --run=<id> resumes
+go run ./cmd/bench tasks --reps=1          # part A of PROTOCOL.md: A01-A15 on dba and crystal (--servers adds others), arm W too (--arm=ro|w|all, --only=A01,...); restores the snapshot before each run; costs model calls; --dry-run prints the commands; --run=<id> resumes
+go run ./cmd/bench tasks --regrade --run=<id> # grade stored part A runs again with the current rubrics; no model call; restores the snapshot
 go run ./cmd/bench report                  # write report.md from the latest run
 go run ./cmd/bench all                     # up, load, n1, n2, security, ops, report (never n3)
 python3 charts.py results/<id> ../assets/bench  # the three charts of BENCHMARK.md; needs matplotlib, nothing else does
