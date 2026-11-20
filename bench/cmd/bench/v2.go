@@ -29,7 +29,7 @@ func (s *session) targets(ctx context.Context, env *results.Env, uri string) ([]
 			return nil, err
 		}
 		env.Servers = append(env.Servers, p.Env())
-		out = append(out, security.Target{Spec: scenarios.Bounded(p.Spec(uri)), Tool: p.SQLTool, Arg: p.SQLArg, ReadOnly: p.ReadOnly})
+		out = append(out, security.Target{Spec: security.Bounded(p.Spec(uri)), Tool: p.SQLTool, Arg: p.SQLArg, ReadOnly: p.ReadOnly})
 	}
 	return out, nil
 }
@@ -51,7 +51,7 @@ func cmdReceive(ctx context.Context, s *session) error {
 	if err != nil {
 		return err
 	}
-	bounds := fmt.Sprintf("call timeout %s, response cap %d MiB, container memory %s", mcpc.CallTimeout, scenarios.ReceiveLimit>>20, scenarios.ReceiveMemory)
+	bounds := fmt.Sprintf("call timeout %s, response cap %d MiB, container memory %s", mcpc.CallTimeout, security.ResponseLimit>>20, security.Memory)
 	return results.Save(l.dir, "receive", results.Receive{Env: l.env, Bounds: bounds, Tools: tools, Rows: rows})
 }
 

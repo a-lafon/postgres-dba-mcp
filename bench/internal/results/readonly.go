@@ -38,7 +38,7 @@ type ReadOnlyCase struct {
 	Source   string `json:"source,omitempty"`
 	Outcome  string `json:"outcome"`
 	Effect   string `json:"effect,omitempty"` // what the snapshot saw change
-	Text     string `json:"text,omitempty"`   // first line of the response
+	Text     string `json:"text,omitempty"`   // start of the response, white space collapsed
 }
 
 // ReadOnlyServer is one server's part C.

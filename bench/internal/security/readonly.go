@@ -13,6 +13,28 @@ import (
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
 )
 
+// ResponseLimit is the response cap of parts B and C: far above any answer an agent can use, low enough to bound the
+// harness on SELECT * FROM events (5,000,000 rows).
+const ResponseLimit = 256 << 20
+
+// Memory bounds each server container, so that a huge result cannot exhaust the Docker VM that also runs the database.
+const Memory = "4g"
+
+// Bounded returns spec with the container memory capped at Memory, and without --rm: a container that dies stays
+// until the spec's Cleanup removes it, so that its exit code and OOM flag can be read. Only docker specs change.
+func Bounded(spec servers.Spec) servers.Spec {
+	if len(spec.Argv) > 2 && spec.Argv[0] == "docker" && spec.Argv[1] == "run" {
+		argv := []string{"docker", "run", "--memory=" + Memory}
+		for _, a := range spec.Argv[2:] {
+			if a != "--rm" {
+				argv = append(argv, a)
+			}
+		}
+		spec.Argv = argv
+	}
+	return spec
+}
+
 // Target is one server of parts B and C: how to start it and its SQL tool.
 type Target struct {
 	Spec     servers.Spec
@@ -85,7 +107,7 @@ func (r *Replayer) ReplayReadOnly(ctx context.Context, tg Target, cases []Case, 
 	for _, c := range cases {
 		if srv == nil {
 			var err error
-			if srv, err = tg.Spec.Start(ctx); err != nil {
+			if srv, err = tg.Spec.StartLimit(ctx, ResponseLimit); err != nil {
 				return nil, base, err
 			}
 		}
@@ -104,7 +126,7 @@ func (r *Replayer) ReplayReadOnly(ctx context.Context, tg Target, cases []Case, 
 			effect = strings.Join(d, "; ")
 		}
 		out = append(out, results.ReadOnlyCase{ID: c.ID, Category: c.Category, Source: c.Source,
-			Outcome: Outcome(tg.Spec.Name, text, isError, transport, effect != ""), Effect: effect, Text: firstLine(text)})
+			Outcome: Outcome(tg.Spec.Name, text, isError, transport, effect != ""), Effect: effect, Text: brief(text)})
 		switch {
 		case effect != "":
 			srv.Close()
@@ -124,6 +146,15 @@ func (r *Replayer) ReplayReadOnly(ctx context.Context, tg Target, cases []Case, 
 		}
 	}
 	return out, base, nil
+}
+
+// brief returns the start of a response on one line: a JSON answer (DBHub) has nothing useful on its first line.
+func brief(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > 240 {
+		s = s[:240]
+	}
+	return s
 }
 
 // Baseline resets the database and returns its snapshot: what each server starts from.

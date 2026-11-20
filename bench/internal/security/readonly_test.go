@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/mcpc"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
+	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
 )
 
 func TestAnswer(t *testing.T) {
@@ -90,5 +92,21 @@ func TestExternalCorpus(t *testing.T) {
 	}
 	if got := Channels(cases); len(got) != 1 || got[0] != "ext" {
 		t.Errorf("channels = %v, want [ext]", got)
+	}
+}
+
+func TestBounded(t *testing.T) {
+	spec := servers.Spec{Argv: []string{"docker", "run", "-i", "--rm", "img"}}
+	got := Bounded(spec).Argv
+	want := []string{"docker", "run", "--memory=" + Memory, "-i", "img"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Bounded = %q, want %q", got, want)
+	}
+	if !reflect.DeepEqual(spec.Argv, []string{"docker", "run", "-i", "--rm", "img"}) {
+		t.Errorf("Bounded changed its argument: %q", spec.Argv)
+	}
+	native := servers.Spec{Argv: []string{"/bin/server"}}
+	if got := Bounded(native).Argv; !reflect.DeepEqual(got, native.Argv) {
+		t.Errorf("Bounded changed a native spec: %q", got)
 	}
 }

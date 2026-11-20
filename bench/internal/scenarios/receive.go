@@ -39,30 +39,8 @@ var ReceiveStatements = []ReceiveStatement{
 	{"B7", "SELECT nme FROM film", ""},
 }
 
-// ReceiveLimit is the response cap of part B: far above any answer an agent can use, low enough to bound the harness
-// on B3 (5,000,000 rows).
-const ReceiveLimit = 256 << 20
-
-// ReceiveMemory bounds each server container, so that B3 cannot exhaust the Docker VM that also runs the database.
-const ReceiveMemory = "4g"
-
 // probeTimeout bounds the SELECT 1 that checks a server is still up after a call.
 const probeTimeout = 30 * time.Second
-
-// Bounded returns spec with the container memory capped at ReceiveMemory, and without --rm: a container that dies
-// stays until the spec's Cleanup removes it, so that its exit code and OOM flag can be read. Only docker specs change.
-func Bounded(spec servers.Spec) servers.Spec {
-	if len(spec.Argv) > 2 && spec.Argv[0] == "docker" && spec.Argv[1] == "run" {
-		argv := []string{"docker", "run", "--memory=" + ReceiveMemory}
-		for _, a := range spec.Argv[2:] {
-			if a != "--rm" {
-				argv = append(argv, a)
-			}
-		}
-		spec.Argv = argv
-	}
-	return spec
-}
 
 // truth is what the database says a statement returns.
 type truth struct {
@@ -153,7 +131,7 @@ func (r *Receiver) runServer(ctx context.Context, tg security.Target, truths []t
 	}()
 	start := func() error {
 		var err error
-		srv, err = tg.Spec.StartLimit(ctx, ReceiveLimit)
+		srv, err = tg.Spec.StartLimit(ctx, security.ResponseLimit)
 		return err
 	}
 	if err := start(); err != nil {
@@ -191,7 +169,8 @@ func (r *Receiver) runServer(ctx context.Context, tg security.Target, truths []t
 		default:
 			cell.Outcome = results.ReceiveOK
 			if isError {
-				cell.Outcome, cell.Note = results.ReceiveError, firstLine(text)
+				// White space collapsed: a JSON error (DBHub) has nothing on its first line.
+				cell.Outcome, cell.Note = results.ReceiveError, firstLine(strings.Join(strings.Fields(text), " "))
 			}
 			cell.Bytes = len(text)
 			var est bool

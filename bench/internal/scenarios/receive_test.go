@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
-	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
 )
 
 func TestCountRows(t *testing.T) {
@@ -108,22 +107,6 @@ func TestComparePrecisionServers(t *testing.T) {
 				t.Errorf("%d values, wrong %q, reformatted %q; want 15, %d wrong, %d reformatted", n, wrong, reformatted, tt.wrong, tt.reformatted)
 			}
 		})
-	}
-}
-
-func TestBounded(t *testing.T) {
-	spec := servers.Spec{Argv: []string{"docker", "run", "-i", "--rm", "img"}}
-	got := Bounded(spec).Argv
-	want := []string{"docker", "run", "--memory=" + ReceiveMemory, "-i", "img"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("Bounded = %q, want %q", got, want)
-	}
-	if !reflect.DeepEqual(spec.Argv, []string{"docker", "run", "-i", "--rm", "img"}) {
-		t.Errorf("Bounded changed its argument: %q", spec.Argv)
-	}
-	native := servers.Spec{Argv: []string{"/bin/server"}}
-	if got := Bounded(native).Argv; !reflect.DeepEqual(got, native.Argv) {
-		t.Errorf("Bounded changed a native spec: %q", got)
 	}
 }
 
