@@ -1,4 +1,4 @@
-// Command bench measures postgres-dba-mcp against crystaldba/postgres-mcp 0.3.0 and writes the go/no-go report.
+// Command bench measures postgres-dba-mcp against other PostgreSQL MCP servers and writes the report.
 // Run it from the bench folder: go run ./cmd/bench <command>.
 package main
 
@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
+	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
 )
 
 const usage = `usage: go run ./cmd/bench <command> [flags]
@@ -21,7 +22,9 @@ const usage = `usage: go run ./cmd/bench <command> [flags]
 commands:
   up                         start the bench databases (docker compose up) and build the server binary
   load [--scale=<f>] [--no-pagila]
-                             load the data set and replay the workload
+                             load the data set, replay the workload, then take the snapshot
+  snapshot                   copy the stopped bench database to the volume bench_pgsnap (load does it)
+  restore                    put the snapshot back in place of the bench database (stops and restarts pg)
   n1 | n2 | security | n3 | ops
                              run one level
   n3 --regrade --run=<id>    grade again the stored n3 transcripts of a run, without calling claude
@@ -40,6 +43,8 @@ flags:
   --run=<id>                 run id of the results folder (default: a new UTC timestamp; report: the latest run)
   --tokens=claude            count tokens through claude -p, without any API key (n1, n2, all)
   --with-pgedge              also measure pgEdge on S01-S06 (n2)
+  --servers=<a,b,...>        servers of n1 and n3, from dba,crystal,dbhub,toolbox,reference (default dba,crystal);
+                             n2, security and ops still measure dba and crystal only
 `
 
 // errUsage marks an invocation error: usage text, exit status 2.
@@ -68,7 +73,11 @@ type options struct {
 	maxCost     float64
 	repeat      int
 	calibration string
+	servers     []servers.Pinned // --servers, in the order given
 }
+
+// defaultServers are the servers of the levels written before protocol v2.
+const defaultServers = results.DBA + "," + results.Crystal
 
 func parse(args []string, stderr io.Writer) (options, error) {
 	var o options
@@ -91,6 +100,7 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	fs.Float64Var(&o.maxCost, "max-cost", 0, "")
 	fs.IntVar(&o.repeat, "repeat", 1, "")
 	fs.StringVar(&o.calibration, "calibration", "", "")
+	list := fs.String("servers", "", "")
 	if err := fs.Parse(args[1:]); err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
 		return o, errUsage
@@ -99,12 +109,19 @@ func parse(args []string, stderr io.Writer) (options, error) {
 		(o.tasks != "" && o.tasks != "core" && o.tasks != "extra" && o.tasks != "all") {
 		return o, errUsage
 	}
+	var err error
+	if o.servers, err = servers.Select(*list, defaultServers); err != nil {
+		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
+		return o, errUsage
+	}
 	return o, nil
 }
 
 var commands = map[string]func(context.Context, *session) error{
 	"up":       cmdUp,
 	"load":     cmdLoad,
+	"snapshot": cmdSnapshot,
+	"restore":  cmdRestore,
 	"n1":       cmdN1,
 	"n2":       cmdN2,
 	"security": cmdSecurity,

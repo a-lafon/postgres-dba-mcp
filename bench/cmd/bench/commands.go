@@ -81,7 +81,24 @@ func cmdLoad(ctx context.Context, s *session) error {
 	if loaded {
 		return errors.New("the bench database is already loaded: run `docker compose -f compose.yml down -v`, then `up`, then `load`")
 	}
-	return load.Run(ctx, load.Options{BenchDir: s.benchDir, Scale: s.opts.scale, Pagila: !s.opts.noPagila, Log: s.err, Client: &http.Client{Timeout: 5 * time.Minute}})
+	if err := load.Run(ctx, load.Options{BenchDir: s.benchDir, Scale: s.opts.scale, Pagila: !s.opts.noPagila, Log: s.err, Client: &http.Client{Timeout: 5 * time.Minute}}); err != nil {
+		return err
+	}
+	return cmdSnapshot(ctx, s)
+}
+
+func cmdSnapshot(ctx context.Context, s *session) error {
+	_, _ = fmt.Fprintln(s.err, "load: snapshot of the bench database")
+	return load.Snapshot(ctx, s.benchDir, s.err)
+}
+
+func cmdRestore(ctx context.Context, s *session) error {
+	start := time.Now()
+	if err := load.Restore(ctx, s.benchDir, s.err); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(s.err, "restored the bench database in %s\n", time.Since(start).Round(100*time.Millisecond))
+	return nil
 }
 
 // pool connects to the bench database as bench_ro.
@@ -120,7 +137,31 @@ func (s *session) env(ctx context.Context, db *pgxpool.Pool, c *tokens.Counter) 
 		return e, err
 	}
 	e.DBAVersion, e.DBACommit = info.Version, info.Commit
+	for _, p := range s.opts.servers {
+		se := p.Env()
+		if p.Name == results.DBA { // the levels run the binary built from the repository, not the release image
+			se.Version, se.Image = info.Version, "built from "+info.Commit
+		}
+		e.Servers = append(e.Servers, se)
+	}
 	return e, nil
+}
+
+// defaultOnly refuses a --servers value for a level that measures dba and crystal only.
+func (s *session) defaultOnly(level string) error {
+	if got := strings.Join(s.serverNames(), ","); got != defaultServers {
+		return fmt.Errorf("%s measures %s only, not --servers=%s", level, defaultServers, got)
+	}
+	return nil
+}
+
+// serverNames returns the --servers names.
+func (s *session) serverNames() []string {
+	names := make([]string, len(s.opts.servers))
+	for i, p := range s.opts.servers {
+		names[i] = p.Name
+	}
+	return names
 }
 
 func digestOf(image string) string {
@@ -173,10 +214,25 @@ func (s *session) logCost(c *tokens.Counter) {
 
 func (s *session) dbaSpec() servers.Spec { return servers.DBA(s.bin(), servers.BenchDSN) }
 
-// containerDSN is the bench database as a container on the bench network sees it.
-const containerDSN = "postgres://bench_ro:bench@pg:5432/bench"
+func (s *session) crystalSpec() servers.Spec { return servers.Crystal(servers.BenchURI) }
 
-func (s *session) crystalSpec() servers.Spec { return servers.Crystal(containerDSN) }
+// specs returns the --servers specs, connected as bench_ro. postgres-dba-mcp is the binary built from the repository,
+// as in every level before protocol v2; every other server is its registry container, whose image is made present
+// first so that no start includes a pull or a build.
+func (s *session) specs(ctx context.Context) ([]servers.Spec, error) {
+	var specs []servers.Spec
+	for _, p := range s.opts.servers {
+		if p.Name == results.DBA {
+			specs = append(specs, s.dbaSpec())
+			continue
+		}
+		if err := p.Prepare(ctx, s.benchDir); err != nil {
+			return nil, err
+		}
+		specs = append(specs, p.Spec(servers.BenchURI))
+	}
+	return specs, nil
+}
 
 func cmdN1(ctx context.Context, s *session) error {
 	l, err := s.begin(ctx)
@@ -186,7 +242,11 @@ func cmdN1(ctx context.Context, s *session) error {
 	defer l.close()
 	defer s.logCost(l.counter)
 	out := results.N1{Env: l.env}
-	for _, spec := range []servers.Spec{s.dbaSpec(), s.crystalSpec()} {
+	specs, err := s.specs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, spec := range specs {
 		srv, err := spec.Start(ctx)
 		if err != nil {
 			return err
@@ -268,6 +328,9 @@ func cmdN2Recheck(ctx context.Context, s *session) error {
 }
 
 func cmdN2(ctx context.Context, s *session) error {
+	if err := s.defaultOnly("n2"); err != nil {
+		return err
+	}
 	if s.opts.recheck {
 		return cmdN2Recheck(ctx, s)
 	}
@@ -305,6 +368,9 @@ func cmdN2(ctx context.Context, s *session) error {
 }
 
 func cmdSecurity(ctx context.Context, s *session) error {
+	if err := s.defaultOnly("security"); err != nil {
+		return err
+	}
 	l, err := s.begin(ctx)
 	if err != nil {
 		return err
@@ -362,7 +428,7 @@ func cmdN3(ctx context.Context, s *session) error {
 		return fmt.Errorf("connect to the bench database as postgres: %w", err)
 	}
 	defer admin.Close()
-	r := &agent.Runner{DB: l.db, Admin: admin, RepoDir: s.repoDir, OutDir: l.dir, Log: s.err, Servers: []string{results.DBA, results.Crystal}, Tasks: s.n3Tasks()}
+	r := &agent.Runner{DB: l.db, Admin: admin, RepoDir: s.repoDir, OutDir: l.dir, Log: s.err, Servers: s.serverNames(), Tasks: s.n3Tasks()}
 	run := r.Run
 	if s.opts.regrade {
 		run = r.Regrade
@@ -375,6 +441,9 @@ func cmdN3(ctx context.Context, s *session) error {
 }
 
 func cmdOps(ctx context.Context, s *session) error {
+	if err := s.defaultOnly("ops"); err != nil {
+		return err
+	}
 	l, err := s.begin(ctx)
 	if err != nil {
 		return err
@@ -385,7 +454,7 @@ func cmdOps(ctx context.Context, s *session) error {
 			return err
 		}
 	}
-	out, err := ops.Run(ctx, ops.Options{DBA: s.dbaSpec(), Image: servers.DBAImage(containerDSN), Crystal: s.crystalSpec(), Bin: s.bin(), DSN: servers.BenchDSN, Pagila: l.env.Pagila, Log: s.err})
+	out, err := ops.Run(ctx, ops.Options{DBA: s.dbaSpec(), Image: servers.DBAImage(servers.BenchURI), Crystal: s.crystalSpec(), Bin: s.bin(), DSN: servers.BenchDSN, Pagila: l.env.Pagila, Log: s.err})
 	if err != nil {
 		return err
 	}

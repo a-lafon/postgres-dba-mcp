@@ -15,10 +15,21 @@ import (
 
 // Server names used as keys in every result.
 const (
-	DBA     = "dba"
-	Crystal = "crystal"
-	PgEdge  = "pgedge"
+	DBA       = "dba"
+	Crystal   = "crystal"
+	DBHub     = "dbhub"
+	Toolbox   = "toolbox"
+	Reference = "reference" // @modelcontextprotocol/server-postgres
+	PgEdge    = "pgedge"
 )
+
+// ServerEnv is what a result records about one server it measured.
+type ServerEnv struct {
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	Image    string `json:"image"`
+	ReadOnly string `json:"read_only"`
+}
 
 // Token counter labels.
 const (
@@ -39,6 +50,8 @@ type Env struct {
 	CrystalDigest string  `json:"crystal_digest"`
 	PGVersion     string  `json:"pg_version"`
 	PgEdge        bool    `json:"pgedge"`
+	// Servers are the servers of the registry the level ran, in --servers order; absent before protocol v2.
+	Servers []ServerEnv `json:"servers,omitempty"`
 }
 
 // N1Server is the tool-definition cost of one server.
