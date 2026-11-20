@@ -166,7 +166,7 @@ A server without an equivalent tool for an operation is left out of that operati
 | ID | Statement | Measures | Expected advantage |
 |---|---|---|---|
 | B1 | `SELECT * FROM film LIMIT 10` | baseline size | none |
-| B2 | `SELECT * FROM rental` (16,044 rows) | size; is the truncation stated? | postgres-dba-mcp |
+| B2 | `SELECT * FROM rental` (51,805 rows in the pinned Pagila) | size; is the truncation stated? | postgres-dba-mcp |
 | B3 | `SELECT * FROM events` (5,000,000 rows) | does the server stay up, return in time, and say what it cut? | postgres-dba-mcp |
 | B4 | `SELECT id, payload FROM docs WHERE id = 42` (20 kB cell) | size; is the cut cell stated? | postgres-dba-mcp |
 | ~~B5~~ | ~~a `vector(1536)` column~~ | dropped: the database image has no pgvector (§3) | |
