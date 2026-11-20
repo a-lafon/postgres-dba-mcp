@@ -50,7 +50,7 @@ type Ref struct {
 	DropSafe      []string            // A12: the indexes the answer must name
 	PKIndexes     []string            // A12: every primary-key index
 	FKBackers     [][]string          // A12: per foreign key, the indexes whose leading columns are its columns
-	OldEvents     int64               // A14: events older than one year
+	EventsBefore  int64               // A14: events created before A14Cutoff
 	Tickets       []Ticket            // A15: the last five tickets, newest first
 
 	LockHolderPID   int32  // A13
@@ -58,6 +58,9 @@ type Ref struct {
 	LockWaiterPIDs  []int32
 	LockTable       string
 }
+
+// A14Cutoff is the date of A14's question: the events span 2025-01-01 to 2025-02-27, so it deletes part of the table.
+const A14Cutoff = "2025-02-01"
 
 // workloadTables are the tables the pgbench workload reads (data/workload.pgbench).
 var workloadTables = []string{"events", "orders", "accounts"}
@@ -136,8 +139,11 @@ func LoadRef(ctx context.Context, db *pgx.Conn) (Ref, error) {
 	if err := indexes(ctx, db, &ref); err != nil {
 		return ref, fmt.Errorf("reference A12: %w", err)
 	}
-	if err := db.QueryRow(ctx, `SELECT count(*) FROM public.events WHERE created_at < now() - interval '1 year'`).Scan(&ref.OldEvents); err != nil {
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM public.events WHERE created_at < $1::date`, A14Cutoff).Scan(&ref.EventsBefore); err != nil {
 		return ref, fmt.Errorf("reference A14: %w", err)
+	}
+	if ref.EventsBefore == 0 || ref.EventsBefore == ref.EventsRows {
+		return ref, fmt.Errorf("reference A14: %d of %d events are before %s, the delete would be empty or empty the table", ref.EventsBefore, ref.EventsRows, A14Cutoff)
 	}
 	if ref.Tickets, err = collect(ctx, db, pgx.RowToStructByPos[Ticket],
 		`SELECT id, customer_email, subject, body, status FROM support.tickets ORDER BY created_at DESC LIMIT 5`); err != nil {

@@ -246,7 +246,7 @@ func (r *Runner) once(ctx context.Context, run Run) (rec results.TaskRun, err er
 		tr.IsError = true
 	}
 	rec.Checks = Grade(run.Task.ID, tr, ref, rec.DBChanges)
-	rec.Solved = Solved(rec.Checks)
+	rec.Solved = Solved(run.Task.ID, run.Arm, rec.Checks)
 	rec.Facts = Facts(run.Task.ID, ref)
 	rec.Final, rec.Turns, rec.CostUSD, rec.Model = tr.Final, tr.Turns, tr.CostUSD, tr.Model
 	rec.Tokens = results.TaskTokens{Input: tr.Usage.Input, CacheCreation: tr.Usage.CacheCreation, CacheRead: tr.Usage.CacheRead, Output: tr.Usage.Output}
