@@ -1,21 +1,20 @@
-// Package ops measures what running the servers costs: cold start, resident memory, size and concurrency.
+// Package ops measures what running each server costs: image size, cold start and memory. They are context for the
+// report, never a result (PROTOCOL.md §1). Every server runs from its registry image on the bench network,
+// postgres-dba-mcp included, so the servers are compared image against image; the published figures come from a
+// GitHub Actions x86-64 runner (§9), where no image runs emulated.
 package ops
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
-	"net"
-	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/a-lafon/postgres-dba-mcp/bench/internal/mcpc"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/scenarios"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/servers"
@@ -23,101 +22,122 @@ import (
 
 // Measure counts.
 const (
-	ColdStarts     = 20
-	RSSCalls       = 100
-	MemSamples     = 3 // containers per server, the memory measure being their median
-	Concurrent     = 50
-	crystalLabel   = "includes docker run"
-	rssResponseCap = 512 << 20
-	// ImageLabel names what the postgres-dba-mcp memory target reads.
-	ImageLabel = "linux image, docker stats"
+	ColdStarts = 20
+	MemCalls   = 100
+	MemSamples = 3 // containers per server, the memory measure being their median
+	// memSQL is S02, which returns every row of Pagila's rental table.
+	memSQL = "SELECT * FROM rental"
+	// memResponseCap lets every server answer S02 in full: crystaldba's answer exceeds the 16 MiB cap of the other levels.
+	memResponseCap = 512 << 20
+	coldSQL        = "SELECT 1"
+	// Notes of the measures, kept in ops.json.
+	ColdNote = "docker run to the answer of the first SQL call"
+	MemNote  = "docker stats"
+	SizeNote = "docker image inspect"
 )
 
 // Options configure Run.
 type Options struct {
-	DBA     servers.Spec // the native binary: cold start, informational memory
-	Image   servers.Spec // the linux image: the memory measure of the target
-	Crystal servers.Spec
-	Bin     string // path of the postgres-dba-mcp binary, for its size
-	DSN     string // connection string of the bench database, for the HTTP server
+	Servers []servers.Pinned // their images must be present (Pinned.Prepare)
+	URI     string           // the database as a container on the bench network sees it
 	Pagila  bool
 	Log     io.Writer
 }
 
-// Run takes every ops measure. The RSS and concurrency measures need Pagila (they call S02 and S01).
+// Run takes every ops measure of every server. The memory measure needs Pagila (S02 reads rental).
 func Run(ctx context.Context, o Options) (results.Ops, error) {
 	out := results.Ops{
 		ColdStartMS: map[string]results.Measure{}, RSSMB: map[string]results.Measure{}, SizeMB: map[string]results.Measure{},
 	}
-	for _, spec := range []servers.Spec{o.DBA, o.Crystal} {
-		_, _ = fmt.Fprintf(o.Log, "ops cold start %s\n", spec.Name)
-		ms, err := coldStart(ctx, spec)
+	out.Concurrency.Skipped = true // protocol v2 measures no concurrency
+	var err error
+	if out.Host, err = host(ctx); err != nil {
+		return out, err
+	}
+	for _, p := range o.Servers {
+		size, err := imageSize(ctx, p.Image)
 		if err != nil {
 			return out, err
 		}
-		m := results.Measure{Value: ms}
-		if spec.Name == results.Crystal {
-			m.Note = crystalLabel
-		}
-		out.ColdStartMS[spec.Name] = m
-	}
-	fi, err := os.Stat(o.Bin)
-	if err != nil {
-		return out, fmt.Errorf("binary size: %w", err)
-	}
-	out.SizeMB[results.DBA] = results.Measure{Value: float64(fi.Size()) / (1 << 20), Note: "binary"}
-	img, err := imageSize(ctx, servers.CrystalImage)
-	if err != nil {
-		return out, err
-	}
-	out.SizeMB[results.Crystal] = results.Measure{Value: img, Note: "image"}
+		out.SizeMB[p.Name] = results.Measure{Value: size, Note: SizeNote}
 
-	if !o.Pagila {
-		skip := results.Measure{Skipped: true, Note: "needs Pagila"}
-		out.RSSMB[results.DBA], out.RSSMB[results.Crystal], out.NativeRSSMB, out.Concurrency.Skipped = skip, skip, skip, true
-		return out, nil
-	}
-	// The target reads the image, as shipped to containers and measured like crystaldba; the native binary is informational.
-	for _, m := range []struct {
-		spec servers.Spec
-		note string
-	}{{o.Image, ImageLabel}, {o.Crystal, ""}} {
-		_, _ = fmt.Fprintf(o.Log, "ops rss %s\n", m.spec.Name)
+		_, _ = fmt.Fprintf(o.Log, "ops cold start %s\n", p.Name)
+		ms, err := coldStart(ctx, p, o.URI)
+		if err != nil {
+			return out, err
+		}
+		out.ColdStartMS[p.Name] = medianMeasure(ms, ColdNote)
+
+		if !o.Pagila {
+			out.RSSMB[p.Name] = results.Measure{Skipped: true, Note: "needs Pagila"}
+			continue
+		}
+		_, _ = fmt.Fprintf(o.Log, "ops memory %s\n", p.Name)
 		var samples []float64
 		for i := 0; i < MemSamples; i++ {
-			mb, _, err := rss(ctx, m.spec)
+			mb, err := memory(ctx, p, o.URI)
 			if err != nil {
 				return out, err
 			}
 			samples = append(samples, mb)
 		}
-		out.RSSMB[m.spec.Name] = medianMeasure(samples, m.note)
+		out.RSSMB[p.Name] = medianMeasure(samples, MemNote)
 	}
-	_, _ = fmt.Fprintln(o.Log, "ops rss native")
-	mb, what, err := rss(ctx, o.DBA)
-	if err != nil {
-		return out, err
-	}
-	out.NativeRSSMB = results.Measure{Value: mb, Note: what}
-	_, _ = fmt.Fprintln(o.Log, "ops concurrency")
-	out.Concurrency.Calls = Concurrent
-	out.Concurrency.Errors, err = concurrency(ctx, o)
-	return out, err
+	return out, nil
 }
 
-// coldStart returns the median, in ms, of ColdStarts times from process start to the initialize response.
-func coldStart(ctx context.Context, spec servers.Spec) (float64, error) {
+// coldStart returns ColdStarts times, in ms, from `docker run` to the answer of a first SQL call: the initialize
+// handshake, then SELECT 1 through the server's SQL tool, which also opens its first database connection.
+func coldStart(ctx context.Context, p servers.Pinned, uri string) ([]float64, error) {
 	var ms []float64
 	for i := 0; i < ColdStarts; i++ {
 		start := time.Now()
-		srv, err := spec.Start(ctx)
+		srv, err := p.Spec(uri).Start(ctx)
 		if err != nil {
+			return nil, err
+		}
+		res, err := srv.Call(ctx, p.SQLTool, map[string]any{p.SQLArg: coldSQL})
+		d := time.Since(start)
+		srv.Close()
+		if err := callErr(p.Name, "cold start", res.IsError, res.Text, err); err != nil {
+			return nil, err
+		}
+		ms = append(ms, float64(d.Microseconds())/1000)
+	}
+	return ms, nil
+}
+
+// memory returns the memory, in MB, that docker stats reads for one container of the server after MemCalls calls of
+// S02.
+func memory(ctx context.Context, p servers.Pinned, uri string) (float64, error) {
+	spec := p.Spec(uri)
+	srv, err := spec.StartLimit(ctx, memResponseCap)
+	if err != nil {
+		return 0, err
+	}
+	defer srv.Close()
+	for i := 0; i < MemCalls; i++ {
+		res, err := srv.Call(ctx, p.SQLTool, map[string]any{p.SQLArg: memSQL})
+		if err := callErr(p.Name, fmt.Sprintf("memory call %d", i+1), res.IsError, res.Text, err); err != nil {
 			return 0, err
 		}
-		ms = append(ms, float64(time.Since(start).Microseconds())/1000)
-		srv.Close()
 	}
-	return scenarios.Median(ms), nil
+	out, err := exec.CommandContext(ctx, "docker", "stats", "--no-stream", "--format", "{{.MemUsage}}", spec.Container).Output()
+	if err != nil {
+		return 0, fmt.Errorf("docker stats: %w", err)
+	}
+	return parseMem(strings.TrimSpace(string(out)))
+}
+
+// callErr fails a measure whose call failed: a server that answered with an error did not do the work measured.
+func callErr(server, what string, isError bool, text string, err error) error {
+	if err != nil {
+		return fmt.Errorf("%s on %s: %w", what, server, err)
+	}
+	if isError {
+		return fmt.Errorf("%s on %s: the server answered with an error: %.200s", what, server, text)
+	}
+	return nil
 }
 
 // medianMeasure returns the measure whose value is the median of the samples, which it keeps.
@@ -126,88 +146,6 @@ func medianMeasure(samples []float64, note string) results.Measure {
 }
 
 var reMem = regexp.MustCompile(`^([\d.]+)\s*([KMG]i?B)`)
-
-// rss returns the memory, in MB, of the server after RSSCalls calls of S02, and a label of what was read.
-// A native server is read as its physical footprint on macOS, where ps still counts the pages Go freed with
-// MADV_FREE, and as VmRSS on Linux. crystaldba comes from docker stats and carries no label.
-func rss(ctx context.Context, spec servers.Spec) (float64, string, error) {
-	// crystaldba answers S02 with every row of rental, more than the 16 MiB cap of the other measures at this size.
-	srv, err := spec.StartLimit(ctx, rssResponseCap)
-	if err != nil {
-		return 0, "", err
-	}
-	defer srv.Close()
-	for i := 0; i < RSSCalls; i++ {
-		if _, err := srv.Call(ctx, "execute_sql", map[string]any{"sql": "SELECT * FROM rental"}); err != nil {
-			return 0, "", fmt.Errorf("rss call %d on %s: %w", i+1, spec.Name, err)
-		}
-	}
-	if spec.Container != "" {
-		out, err := exec.CommandContext(ctx, "docker", "stats", "--no-stream", "--format", "{{.MemUsage}}", spec.Container).Output()
-		if err != nil {
-			return 0, "", fmt.Errorf("docker stats: %w", err)
-		}
-		mb, err := parseMem(strings.TrimSpace(string(out)))
-		return mb, "", err
-	}
-	pid := strconv.Itoa(srv.Pid())
-	switch runtime.GOOS {
-	case "darwin":
-		out, err := exec.CommandContext(ctx, "footprint", "-p", pid, "--noCategories").Output()
-		if err != nil {
-			return 0, "", fmt.Errorf("footprint: %w", err)
-		}
-		mb, err := parseFootprint(string(out))
-		return mb, "phys_footprint", err
-	case "linux":
-		b, err := os.ReadFile("/proc/" + pid + "/status")
-		if err != nil {
-			return 0, "", fmt.Errorf("read process status: %w", err)
-		}
-		mb, err := parseVmRSS(string(b))
-		return mb, "RSS", err
-	}
-	return 0, "", fmt.Errorf("no memory reader for %s", runtime.GOOS)
-}
-
-var (
-	reFootprint = regexp.MustCompile(`(?m)^\s*phys_footprint:\s*([\d.]+)\s*([KMG]?B)\b`)
-	reVmRSS     = regexp.MustCompile(`(?m)^VmRSS:\s*(\d+)\s*kB`)
-)
-
-// parseFootprint reads the phys_footprint line of `footprint -p <pid>`, such as "phys_footprint: 36 MB", in MB.
-func parseFootprint(s string) (float64, error) {
-	m := reFootprint.FindStringSubmatch(s)
-	if m == nil {
-		return 0, fmt.Errorf("no phys_footprint in footprint output %q", s)
-	}
-	v, err := strconv.ParseFloat(m[1], 64)
-	if err != nil {
-		return 0, fmt.Errorf("unreadable phys_footprint %q: %w", m[1], err)
-	}
-	switch m[2] {
-	case "B":
-		return v / (1 << 20), nil
-	case "KB":
-		return v / 1024, nil
-	case "GB":
-		return v * 1024, nil
-	}
-	return v, nil
-}
-
-// parseVmRSS reads the VmRSS line of /proc/<pid>/status, in MB.
-func parseVmRSS(s string) (float64, error) {
-	m := reVmRSS.FindStringSubmatch(s)
-	if m == nil {
-		return 0, fmt.Errorf("no VmRSS in process status %q", s)
-	}
-	kb, err := strconv.ParseFloat(m[1], 64)
-	if err != nil {
-		return 0, fmt.Errorf("unreadable VmRSS %q: %w", m[1], err)
-	}
-	return kb / 1024, nil
-}
 
 // parseMem reads the usage part of a `docker stats` MemUsage cell, such as "123.4MiB / 7.6GiB", in MB.
 func parseMem(s string) (float64, error) {
@@ -240,59 +178,58 @@ func imageSize(ctx context.Context, image string) (float64, error) {
 	return n / (1 << 20), nil
 }
 
-// concurrency starts postgres-dba-mcp over streamable HTTP and sends Concurrent S01 calls at once, one session each.
-// It returns the number of calls that failed.
-func concurrency(ctx context.Context, o Options) (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
+// host describes the machine the containers ran on, as the Docker daemon reports it.
+func host(ctx context.Context) (string, error) {
+	out, err := exec.CommandContext(ctx, "docker", "info", "--format", "{{json .}}").Output()
 	if err != nil {
-		return 0, fmt.Errorf("find a free port: %w", err)
+		return "", fmt.Errorf("docker info: %w", err)
 	}
-	port := l.Addr().(*net.TCPAddr).Port
-	_ = l.Close()
-	spec := servers.DBA(o.Bin, o.DSN, "--transport=streamable-http", "--port="+strconv.Itoa(port))
-	cmd := exec.CommandContext(ctx, spec.Argv[0], spec.Argv[1:]...)
-	cmd.Env = append(os.Environ(), spec.Env...)
-	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("start HTTP server: %w", err)
-	}
-	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
-	endpoint := fmt.Sprintf("http://127.0.0.1:%d/mcp", port)
-	if err := waitFor(ctx, endpoint); err != nil {
-		return 0, err
-	}
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	failed := 0
-	for i := 0; i < Concurrent; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			ok := false
-			if c, err := mcpc.ConnectHTTP(ctx, endpoint); err == nil {
-				res, err := c.Call(ctx, "execute_sql", map[string]any{"sql": "SELECT * FROM film LIMIT 10"})
-				ok = err == nil && !res.IsError
-				c.Close()
-			}
-			if !ok {
-				mu.Lock()
-				failed++
-				mu.Unlock()
-			}
-		}()
-	}
-	wg.Wait()
-	return failed, nil
+	return parseHost(out)
 }
 
-// waitFor polls until the HTTP endpoint accepts an MCP session.
-func waitFor(ctx context.Context, endpoint string) error {
-	deadline := time.Now().Add(15 * time.Second)
-	for time.Now().Before(deadline) {
-		if c, err := mcpc.ConnectHTTP(ctx, endpoint); err == nil {
-			c.Close()
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
+// parseHost reads the output of `docker info --format '{{json .}}'` into "<os>, <arch>, <n> CPUs, <mem> GiB".
+func parseHost(b []byte) (string, error) {
+	var info struct {
+		OperatingSystem, Architecture string
+		NCPU                          int
+		MemTotal                      int64
 	}
-	return fmt.Errorf("HTTP server at %s did not come up", endpoint)
+	if err := json.Unmarshal(b, &info); err != nil {
+		return "", fmt.Errorf("decode docker info: %w", err)
+	}
+	if info.Architecture == "" || info.NCPU == 0 || info.MemTotal == 0 {
+		return "", fmt.Errorf("docker info lacks the architecture, CPUs or memory: %.200s", b)
+	}
+	return fmt.Sprintf("%s, %s, %d CPUs, %.1f GiB", info.OperatingSystem, info.Architecture, info.NCPU,
+		float64(info.MemTotal)/(1<<30)), nil
+}
+
+// Table renders the measures as a markdown table, one row per server of o.Env.Servers.
+func Table(o results.Ops) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Host: %s (docker daemon). Every server runs from its pinned image.\n\n", o.Host)
+	fmt.Fprintf(&sb, "| Server | Image size | Cold start, median of %d | Memory after %d S02 calls, median of %d containers |\n",
+		ColdStarts, MemCalls, MemSamples)
+	sb.WriteString("|---|---|---|---|\n")
+	for _, s := range o.Env.Servers {
+		fmt.Fprintf(&sb, "| %s %s | %s | %s | %s |\n", s.Name, s.Version,
+			cell(o.SizeMB[s.Name], "%.0f MB", false), cell(o.ColdStartMS[s.Name], "%.0f ms", false), cell(o.RSSMB[s.Name], "%.1f MB", true))
+	}
+	return sb.String()
+}
+
+// cell formats one measure, with its samples when asked.
+func cell(m results.Measure, format string, samples bool) string {
+	if m.Skipped {
+		return "skipped (" + m.Note + ")"
+	}
+	s := fmt.Sprintf(format, m.Value)
+	if samples && len(m.Samples) > 0 {
+		parts := make([]string, len(m.Samples))
+		for i, v := range m.Samples {
+			parts[i] = strconv.FormatFloat(v, 'f', 1, 64)
+		}
+		s += " (" + strings.Join(parts, ", ") + ")"
+	}
+	return s
 }

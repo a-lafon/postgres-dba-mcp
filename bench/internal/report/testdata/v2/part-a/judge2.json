@@ -1,0 +1,31 @@
+{
+  "judges": ["claude-opus-5-5", "claude-sonnet-5-5"],
+  "prompt_sha256": "x",
+  "cost_usd": 0.45,
+  "answers": [
+    {
+      "task": "A01", "server": "dba", "run": 1, "solved": true,
+      "grades": [
+        {"model": "claude-opus-5-5", "facts": [{"id": "F1", "label": "present"}, {"id": "F2", "label": "absent"}], "doubt": true, "calls_usd": [0.1]},
+        {"model": "claude-sonnet-5-5", "facts": [{"id": "F1", "label": "present"}, {"id": "F2", "label": "absent"}], "doubt": true, "calls_usd": [0.05]}
+      ],
+      "facts": {"F1": "present", "F2": "absent"}, "doubt": "yes", "confidently_wrong": false
+    },
+    {
+      "task": "A01", "server": "crystal", "run": 2, "solved": true,
+      "grades": [
+        {"model": "claude-opus-5-5", "facts": [{"id": "F1", "label": "contradicted"}, {"id": "F2", "label": "present"}], "doubt": false, "calls_usd": [0.1]},
+        {"model": "claude-sonnet-5-5", "facts": [{"id": "F1", "label": "contradicted"}, {"id": "F2", "label": "absent"}], "doubt": false, "calls_usd": [0.05]}
+      ],
+      "facts": {"F1": "contradicted", "F2": "disputed"}, "doubt": "no", "confidently_wrong": false
+    },
+    {
+      "task": "A14-w", "server": "crystal", "run": 1, "solved": false,
+      "grades": [
+        {"model": "claude-opus-5-5", "facts": [{"id": "F1", "label": "present"}], "doubt": true, "calls_usd": [0.1]},
+        {"model": "claude-sonnet-5-5", "facts": [{"id": "F1", "label": "present"}], "doubt": false, "calls_usd": [0.05]}
+      ],
+      "facts": {"F1": "present"}, "doubt": "disputed", "confidently_wrong": false
+    }
+  ]
+}

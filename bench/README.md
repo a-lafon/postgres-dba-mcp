@@ -22,19 +22,26 @@ Run them from this folder.
 
 ```sh
 go run ./cmd/bench up                      # docker compose up (pg, fixture), build bin/postgres-dba-mcp and the linux image postgres-dba-mcp:bench
-go run ./cmd/bench load --scale=0.1        # data set, traps, Pagila, ANALYZE, then 120 s of pgbench
-go run ./cmd/bench n1                      # tool-definition tokens (informational)
-go run ./cmd/bench n2                      # S01-S21, 5 runs per scenario and server
+go run ./cmd/bench load --scale=0.1        # data set, traps, Pagila, fixtures, ANALYZE, 120 s of pgbench, then the snapshot
+go run ./cmd/bench restore                 # put the snapshot back (stops and restarts pg; about 9 s at scale 1 on a Mac)
+go run ./cmd/bench n1                      # tool-definition tokens (informational); --servers=dba,crystal,dbhub,toolbox,reference
+go run ./cmd/bench n2                      # S01-S21, 5 runs per scenario and server; postgres-dba-mcp from its release image, as in part A
 go run ./cmd/bench security                # attack corpus replay through both servers
-go run ./cmd/bench ops                     # cold start, memory (linux image, docker stats; native binary as information), sizes (release-flag build: -trimpath -ldflags "-s -w"), 50 concurrent calls over HTTP
+go run ./cmd/bench ops                     # image size, cold start, memory of each --servers image (see Operations); published figures come from GitHub Actions
 go run ./cmd/bench n3                      # 6 agent tasks with `claude -p`: costs model calls, run by hand only
 go run ./cmd/bench n3 --tasks=extra        # T11-T13 (schema reading, index tuning); --tasks=all runs the nine
 go run ./cmd/bench judge --run=<id> [--also=<id>,<id>] [--max-cost=<usd>] [--repeat=<n>]  # LLM judge of the stored n3 answers, blind pairwise then error attribution: costs model calls
 go run ./cmd/bench judge --calibration=results/<id>/calibration.md  # agreement of your filled calibration sheet with the judge (no call)
+go run ./cmd/bench tasks --reps=1          # part A of PROTOCOL.md: A01-A15 on dba and crystal (--servers adds others), arm W too (--arm=ro|w|all, --only=A01,...); restores the snapshot before each run; costs model calls; --dry-run prints the commands; --run=<id> resumes
+go run ./cmd/bench tasks --regrade --run=<id> # grade stored part A runs again with the current rubrics; no model call; restores the snapshot
 go run ./cmd/bench report                  # write report.md from the latest run
 go run ./cmd/bench all                     # up, load, n1, n2, security, ops, report (never n3)
 python3 charts.py results/<id> ../assets/bench  # the three charts of BENCHMARK.md; needs matplotlib, nothing else does
+go run ./cmd/bench receive                 # protocol v2 part B: B1-B7 through each server's SQL tool as bench_ro (receive.json, receive/)
+go run ./cmd/bench readonly                # protocol v2 part C as bench_owner (readonly.json); restores the database: run it alone
 ```
+
+`receive` and `readonly` measure the five servers of the registry (`--servers` narrows them), each in its registry container, the release image of postgres-dba-mcp included, with the container memory capped at 4 GiB so that `SELECT * FROM events` cannot exhaust the Docker VM that also runs the database; a server that dies keeps its container until the end of the call, and the cell notes its exit code and whether it was killed for memory. `receive` sends each statement once, keeps every response in `results/<run>/receive/`, then checks with `SELECT 1` that the server still answers. Truncation is `stated`, `silent` or `none`, from the rows (or, for B4, the whole 20 kB value) found in the response against the database's count. B6 marks each value `exact` (the database's text), `reformatted` (another notation of exactly the same value: an RFC 3339 time, an interval object) or `wrong`. Tokens are `ceil(bytes/4)` estimates, flagged, unless `--tokens=claude`. `readonly` replays `testdata/safesql/attacks.sql` (labelled postgres-dba-mcp's own corpus), `data/external-attacks.sql` (each case with its source) and `testdata/safesql/legit.sql`, plus `--agent-sql=<file>` (the SQL of part A, in the same `-- case: <id> <category>` format) when given. After each statement a snapshot classifies it: refused by the server, refused by the database, executed with no lasting effect, executed with a lasting effect (or no answer). The table checksums run only when a transaction id was assigned since the last snapshot, since a committed write needs one. The database is restored before each server, after every lasting effect, and at the end.
 
 `all` takes about 40 minutes at `--scale=1` on a Linux laptop, and about 10 at `--scale=0.1`. Most of it is `n2` against crystaldba, which answers S02 and S03 by exceeding a limit, and `ops`, which fills three containers per server with 100 calls each. Add `--tokens=claude` and it costs about 5 USD on top; without it the run is free.
 
@@ -55,12 +62,24 @@ It mounts the repository at the path it has on the host (the harness drives the 
 
 `load` refuses a database that is already loaded. To start over: `docker compose -f compose.yml down -v`, then `up`, then `load`.
 
+## Operations
+
+`ops` measures, for each server of `--servers`, from its pinned registry image (postgres-dba-mcp from its GHCR release image, like the others): the image size (`docker image inspect`), the cold start (median of 20 times from `docker run` to the answer of a first `SELECT 1` through its SQL tool) and the memory after 100 S02 calls (`SELECT * FROM rental`, `docker stats`, median of 3 containers). It writes `results/<run>/ops.json` and the table `ops.md`. Concurrency is no longer measured (`concurrency.skipped` in `ops.json`). The figures are context, never a result ([PROTOCOL.md](PROTOCOL.md) §1), and the published ones come only from the workflow [`bench-ops.yml`](../.github/workflows/bench-ops.yml) on `ubuntu-latest` x86-64 (§9): on an arm64 Mac an amd64-only image would run emulated. A local run is for checking the harness.
+
+The workflow runs on demand only: Actions tab, `bench-ops`, "Run workflow", or `gh workflow run bench-ops.yml` (then `gh run watch` and `gh run download`). It needs no secret and no model. It loads the database at `--scale=0.01`, since the measures read only Pagila and `SELECT 1`, runs `ops --servers=dba,crystal,dbhub,toolbox,reference`, writes the table and the runner's CPU and memory to the job summary, and uploads `ops.json`, `ops.md` and `runner.txt` as the artifact `bench-ops-<run id>`.
+
 ## Data
 
 The bench database is the test fixture's base schema at scale (events 5 000 000, orders 1 000 000, accounts 50 000, times `--scale`), plus:
 
 - schema `traps`: T1 invalid index, T2 duplicate indexes, T3 dead tuples (37.5 %), T4 sequence at 91 %, T5 NOT VALID constraint, T6 unused index (over 100 MB at scale 1);
 - `public.docs` (20 kB jsonb, 50 kB text), `public.wide60` (60 columns), `public.types` (NULL, empty string, bytea, array, interval, timestamptz);
+- the fixtures of [PROTOCOL.md](PROTOCOL.md) §3: `support.tickets` (50 tickets, a prompt injection in ticket 48) and `public.precision` (values whose exact text is checkable);
+- two roles: `bench_ro`, read-only, and `bench_owner`, which owns the tables and can write but is not superuser.
+
+`load` ends with a snapshot: it stops pg and copies its data folder to the volume `bench_pgsnap`, which `restore` copies back (Go: `load.Restore`). The copy holds the statistics and `pg_stat_statements` too. `down -v` keeps that volume; the next `load` overwrites it.
+
+The servers of protocol v2 are in `internal/servers/registry.go`, each pinned by image digest and run in a container on the bench network; `--servers` picks them for `n1` and `n3`. `go test -tags integration -run TestRegistryServersAnswer ./internal/servers/` starts each one against the loaded database, lists its tools and runs `SELECT 1` through its SQL tool.
 - Pagila (`film`, `rental`, `payment`, ...), fetched from the commit pinned in `data/pagila.lock` and checked against its sha256 before anything is loaded. The pinned commit is the last one whose schema runs on PostgreSQL 17 (later ones use `uuidv7()`); with `PG_MAJOR=18` a newer commit can be pinned.
 
 How `load` was loaded is recorded in the database comment, which every level reads (scale, Pagila).
@@ -77,7 +96,6 @@ Queries run with `docker compose -f compose.yml exec -T pg psql -U postgres -d b
 
 - The workload (`data/workload.pgbench`) keeps its three slowest shapes on `events(account_id, created_at)`, which is what S19 expects, and avoids `BETWEEN $n::timestamptz AND $m::timestamptz` and `timestamptz $n` literals: crystaldba 0.3.0's parameter substitution makes its advisor fail on both (`Error evaluating configuration`, `syntax error at or near`), which would turn S19 into a comparison of that bug rather than of the advice.
 - At scale 0.1, crystaldba's S02 and S03 answers exceed the 16 MiB cap (`failed (oversized)`). For the RSS measure of `ops` the cap is raised to 512 MiB so that S02 can be called 100 times on crystaldba.
-- The memory target of `ops` reads postgres-dba-mcp as it ships to containers, measured like crystaldba. `up` builds a static musl cgo binary (`CGO_ENABLED=1`, `-tags pgquery_cgo,netgo,osusergo`, `-trimpath`, `-ldflags "-s -w -linkmode=external -extldflags '-static -s'"`, as `.goreleaser.yaml`) inside `golang:1.26-alpine` for the architecture of the Docker daemon (Go and apk caches in the volumes `pgmcp-gocache` and `pgmcp-gomod`), then the image `postgres-dba-mcp:bench` from the root `Dockerfile` (context `bin/image/`, binary under `bin/image/<os>/<arch>/` and `TARGETPLATFORM` passed as a build arg, because that Dockerfile is goreleaser's and reads the binary under that variable). `ops` builds it when the image is absent (rebuild with `up`), runs it with `docker run -i --rm` on the `bench_bench` network, makes the 100 S02 calls and reads `docker stats`. This is done in 3 containers one after the other, for the image and for crystaldba; the measure is the median of the 3 (the 3 samples are in `rss_mb[].samples` of `ops.json`) and the target checks it, because one sample varied from 14 to 30 MB between runs of the same code. The cell reads `16.0 MB (linux image, docker stats; median of 3, max 30.3 MB)`. The native binary of the host (`phys_footprint` on macOS, `VmRSS` on Linux; the darwin build uses the WASM parser, so it reads more) is measured once after the same calls and shown as an informational line (`native_rss_mb` in `ops.json`); it does not decide the target. Binary size, cold start and concurrency stay on the native binary.
 - **S15 depends on the host.** Its expected facts are the two heavy statements the bench itself sent (`SELECT * FROM events`, `SELECT * FROM rental`), and it only passes when they outrank the 120 s pgbench workload in `get_top_queries(total_time, 10)`. On a fast host the workload accumulates more total time and S15 reads `no` for both servers. It is a property of the fixture: the comparison between the two servers is unaffected, and `n2 --recheck` will not change it.
 - **A server that answers with an error has not answered.** `gradeCell` marks the cell `failed (error)` and incorrect, everywhere but S07, whose expected answer is an error. Without that, crystaldba's own 30 s limit on S03 returns a 44-token error text in milliseconds, which would be graded a correct answer and would enter the S01-S06 token median.
 - The MCP client uses the legacy `initialize` handshake. The SDK's default first sends `server/discover`, which crystaldba's mcp 1.6.0 never answers.

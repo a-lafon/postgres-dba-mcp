@@ -41,6 +41,9 @@ type Transcript struct {
 	Model        string // model of the session, from the system init event
 	DurationMS   int
 	IsError      bool
+	// Usage is the result event's usage: every turn of the session summed. The usage of the assistant events is not
+	// summed instead: their output count is the one known when the event was sent, below the final one.
+	Usage Usage
 }
 
 type block struct {
@@ -54,7 +57,8 @@ type block struct {
 	IsError   bool            `json:"is_error"`
 }
 
-type usage struct {
+// Usage is the token usage of a session.
+type Usage struct {
 	Input         int `json:"input_tokens"`
 	Output        int `json:"output_tokens"`
 	CacheCreation int `json:"cache_creation_input_tokens"`
@@ -74,7 +78,7 @@ type event struct {
 	DurationMS int     `json:"duration_ms"`
 	NumTurns   int     `json:"num_turns"`
 	Cost       float64 `json:"total_cost_usd"`
-	Usage      usage   `json:"usage"`
+	Usage      Usage   `json:"usage"`
 }
 
 // ErrNoResult is returned when a stream ends without its final result event.
@@ -129,6 +133,7 @@ func Parse(r io.Reader) (Transcript, error) {
 			tr.Final, tr.IsError, tr.DurationMS, tr.Turns, tr.CostUSD = ev.Result, ev.IsError, ev.DurationMS, ev.NumTurns, ev.Cost
 			tr.InputTokens = ev.Usage.Input + ev.Usage.CacheCreation + ev.Usage.CacheRead
 			tr.OutputTokens = ev.Usage.Output
+			tr.Usage = ev.Usage
 		}
 	}
 	if err := sc.Err(); err != nil {

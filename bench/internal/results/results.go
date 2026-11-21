@@ -15,10 +15,21 @@ import (
 
 // Server names used as keys in every result.
 const (
-	DBA     = "dba"
-	Crystal = "crystal"
-	PgEdge  = "pgedge"
+	DBA       = "dba"
+	Crystal   = "crystal"
+	DBHub     = "dbhub"
+	Toolbox   = "toolbox"
+	Reference = "reference" // @modelcontextprotocol/server-postgres
+	PgEdge    = "pgedge"
 )
+
+// ServerEnv is what a result records about one server it measured.
+type ServerEnv struct {
+	Name     string `json:"name"`
+	Version  string `json:"version"`
+	Image    string `json:"image"`
+	ReadOnly string `json:"read_only"`
+}
 
 // Token counter labels.
 const (
@@ -39,6 +50,8 @@ type Env struct {
 	CrystalDigest string  `json:"crystal_digest"`
 	PGVersion     string  `json:"pg_version"`
 	PgEdge        bool    `json:"pgedge"`
+	// Servers are the servers of the registry the level ran, in --servers order; absent before protocol v2.
+	Servers []ServerEnv `json:"servers,omitempty"`
 }
 
 // N1Server is the tool-definition cost of one server.
@@ -228,15 +241,24 @@ type Measure struct {
 	Samples []float64 `json:"samples,omitempty"`
 }
 
-// Ops is ops.json. Maps are keyed by server name.
+// Ops is ops.json. Maps are keyed by server name. Since protocol v2 every server, postgres-dba-mcp included, runs from
+// its registry image: Env.Servers names them in --servers order, and Env.DBAVersion and Env.DBACommit only describe
+// the checkout the harness ran from.
 type Ops struct {
-	Env         Env                `json:"env"`
+	Env Env `json:"env"`
+	// Host is the machine the containers ran on, as the Docker daemon reports it; absent before protocol v2.
+	Host string `json:"host,omitempty"`
+	// ColdStartMS is the time from `docker run` to the answer of a first SQL call (before protocol v2: to the
+	// initialize answer, and for postgres-dba-mcp the native binary), with its samples since protocol v2.
 	ColdStartMS map[string]Measure `json:"cold_start_ms"`
-	// RSSMB is the memory after the S02 calls that the target reads: docker stats, for postgres-dba-mcp the linux image.
+	// RSSMB is the memory after the S02 calls, from docker stats on the server's container.
 	RSSMB map[string]Measure `json:"rss_mb"`
-	// NativeRSSMB is postgres-dba-mcp's native binary after the same calls (informational).
-	NativeRSSMB Measure            `json:"native_rss_mb"`
-	SizeMB      map[string]Measure `json:"size_mb"`
+	// NativeRSSMB is postgres-dba-mcp's native binary after the same calls (informational); not measured since
+	// protocol v2, so zero.
+	NativeRSSMB Measure `json:"native_rss_mb"`
+	// SizeMB is the image size (before protocol v2: for postgres-dba-mcp the native binary).
+	SizeMB map[string]Measure `json:"size_mb"`
+	// Concurrency is postgres-dba-mcp over HTTP; protocol v2 does not measure it and marks it skipped.
 	Concurrency struct {
 		Calls   int  `json:"calls"`
 		Errors  int  `json:"errors"`

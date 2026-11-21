@@ -21,6 +21,14 @@ const (
 	BenchAdminDSN   = "postgres://postgres:bench@localhost:55433/bench"
 	FixtureDSN      = "postgres://pgdba_ro:pgdba@localhost:55434/pgdba"
 	FixtureAdminDSN = "postgres://postgres:pgdba@localhost:55434/pgdba"
+	// BenchOwnerDSN is bench_owner, which owns the bench tables and can write (PROTOCOL.md §3).
+	BenchOwnerDSN = "postgres://bench_owner:bench@localhost:55433/bench"
+)
+
+// The bench database as a container on Network sees it, as bench_ro (parts A and B) and as bench_owner (part C, arm W).
+const (
+	BenchURI      = "postgres://bench_ro:bench@pg:5432/bench"
+	BenchOwnerURI = "postgres://bench_owner:bench@pg:5432/bench"
 )
 
 // CrystalImage is crystaldba/postgres-mcp 0.3.0, pinned by digest.

@@ -1,0 +1,5 @@
+answer,task,row,statement,label
+1,A01,F1,KARL SEAL spent 221.55.,present
+1,A01,F2,"ELEANOR HUNT spent 216.54, second.",a
+1,A01,doubt,Does the answer signal a doubt or a limit? yes or no,yes
+1,A01,unsupported,Figures or objects the facts do not support,

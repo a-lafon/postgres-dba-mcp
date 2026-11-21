@@ -23,6 +23,10 @@ type Snapshot struct {
 	Tables        map[string]string // "schema.table" -> "<rows>/<hashtext sum>"
 	SentinelAlive bool              // the sentinel session still exists
 	Notifications []string          // notifications the sentinel received since the previous snapshot
+	// NextXID is the next transaction id to be assigned and OpenXacts the other sessions holding one. They are not
+	// compared: TakeAfter uses them to skip the table checksums when no transaction can have written.
+	NextXID   string
+	OpenXacts int
 }
 
 // CheckedTables are the tables whose content is checksummed.
@@ -74,7 +78,23 @@ func (s *Sentinel) drain(ctx context.Context) []string {
 
 // Take reads a snapshot through the admin connection admin.
 func Take(ctx context.Context, admin *pgx.Conn, s *Sentinel) (Snapshot, error) {
+	return take(ctx, admin, s, nil)
+}
+
+// TakeAfter is Take, but it reuses the table checksums of base when no transaction id was assigned since base and no
+// other session holds one: a committed write to a table needs a transaction id, so the tables cannot have changed.
+// Checksumming the 5,000,000 rows of events takes seconds; the rest of the snapshot takes milliseconds.
+func TakeAfter(ctx context.Context, admin *pgx.Conn, s *Sentinel, base Snapshot) (Snapshot, error) {
+	return take(ctx, admin, s, &base)
+}
+
+func take(ctx context.Context, admin *pgx.Conn, s *Sentinel, base *Snapshot) (Snapshot, error) {
 	var snap Snapshot
+	// Read first: a write that commits while the snapshot is taken then shows as a moved id.
+	if err := admin.QueryRow(ctx, `SELECT pg_snapshot_xmax(pg_current_snapshot())::text,
+		(SELECT count(*) FROM pg_stat_activity WHERE backend_xid IS NOT NULL AND pid <> pg_backend_pid())`).Scan(&snap.NextXID, &snap.OpenXacts); err != nil {
+		return snap, fmt.Errorf("snapshot transaction ids: %w", err)
+	}
 	strs := func(dst *[]string, q string) error {
 		rows, err := admin.Query(ctx, q)
 		if err != nil {
@@ -92,8 +112,15 @@ func Take(ctx context.Context, admin *pgx.Conn, s *Sentinel) (Snapshot, error) {
 		dst *[]string
 		sql string
 	}{
-		{&snap.Relations, `SELECT n.nspname || '.' || c.relname || ':' || c.relkind::text FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-			WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast') AND n.nspname NOT LIKE 'pg\_temp%' AND n.nspname NOT LIKE 'pg\_toast\_temp%'`},
+		// Relations with their column count and privileges, schemas and functions: CREATE, DROP, ALTER ... ADD COLUMN,
+		// GRANT and CREATE FUNCTION all show.
+		{&snap.Relations, `SELECT n.nspname || '.' || c.relname || ':' || c.relkind::text || ':' || c.relnatts || ':' || coalesce(c.relacl::text, '')
+			FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast') AND n.nspname NOT LIKE 'pg\_temp%' AND n.nspname NOT LIKE 'pg\_toast\_temp%'
+			UNION ALL SELECT 'schema ' || nspname || ':' || nspowner::regrole::text || ':' || coalesce(nspacl::text, '') FROM pg_namespace
+			WHERE nspname NOT LIKE 'pg\_%' AND nspname <> 'information_schema'
+			UNION ALL SELECT 'function ' || n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')'
+			FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg\_temp%'`},
 		{&snap.Sequences, `SELECT schemaname || '.' || sequencename || '=' || coalesce(last_value::text, 'null') FROM pg_sequences`},
 		{&snap.RoleSettings, `SELECT setdatabase || '/' || setrole || '/' || setconfig::text FROM pg_db_role_setting`},
 		{&snap.Advisory, `SELECT pid || '/' || classid || '/' || objid || '/' || mode FROM pg_locks WHERE locktype = 'advisory'`},
@@ -106,14 +133,10 @@ func Take(ctx context.Context, admin *pgx.Conn, s *Sentinel) (Snapshot, error) {
 	if err := admin.QueryRow(ctx, "SELECT count(*) FROM pg_largeobject_metadata").Scan(&snap.LargeObjects); err != nil {
 		return snap, fmt.Errorf("snapshot large objects: %w", err)
 	}
-	snap.Tables = map[string]string{}
-	for _, t := range CheckedTables {
-		var n, sum int64
-		q := fmt.Sprintf("SELECT count(*), coalesce(sum(hashtext(t::text)), 0) FROM %s t", t)
-		if err := admin.QueryRow(ctx, q).Scan(&n, &sum); err != nil {
-			return snap, fmt.Errorf("snapshot %s: %w", t, err)
-		}
-		snap.Tables[t] = fmt.Sprintf("%d/%d", n, sum)
+	if base != nil && snap.NextXID == base.NextXID && snap.OpenXacts == 0 && base.Tables != nil {
+		snap.Tables = base.Tables
+	} else if err := checksum(ctx, admin, &snap); err != nil {
+		return snap, err
 	}
 	if s != nil {
 		var alive int
@@ -124,6 +147,28 @@ func Take(ctx context.Context, admin *pgx.Conn, s *Sentinel) (Snapshot, error) {
 		snap.Notifications = s.drain(ctx)
 	}
 	return snap, nil
+}
+
+// checksum reads the row count and content hash of CheckedTables.
+func checksum(ctx context.Context, admin *pgx.Conn, snap *Snapshot) error {
+	snap.Tables = map[string]string{}
+	for _, t := range CheckedTables {
+		var exists bool
+		if err := admin.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", t).Scan(&exists); err != nil {
+			return fmt.Errorf("snapshot %s: %w", t, err)
+		}
+		if !exists { // dropped: the diff then reads "<rows>/<sum> -> absent"
+			snap.Tables[t] = "absent"
+			continue
+		}
+		var n, sum int64
+		q := fmt.Sprintf("SELECT count(*), coalesce(sum(hashtext(t::text)), 0) FROM %s t", t)
+		if err := admin.QueryRow(ctx, q).Scan(&n, &sum); err != nil {
+			return fmt.Errorf("snapshot %s: %w", t, err)
+		}
+		snap.Tables[t] = fmt.Sprintf("%d/%d", n, sum)
+	}
+	return nil
 }
 
 // Diff describes what changed from a to b, one entry per change; it is empty when nothing did.

@@ -80,7 +80,14 @@ func (r *Runner) runServer(ctx context.Context, spec servers.Spec, all []Scenari
 			}
 		}
 		_, _ = fmt.Fprintf(r.Log, "n2 %s %s\n", s.ID, spec.Name)
-		cell, failed, err := r.measure(ctx, srv, spec.Name, s, calls[i])
+		c := calls[i]
+		if s.Live {
+			var err error
+			if c, err = s.Prepare(ctx, r.DB); err != nil {
+				return fmt.Errorf("prepare %s for %s: %w", s.ID, spec.Name, err)
+			}
+		}
+		cell, failed, err := r.measure(ctx, srv, spec.Name, s, c)
 		if err != nil {
 			return fmt.Errorf("%s on %s: %w", s.ID, spec.Name, err)
 		}
@@ -184,6 +191,7 @@ func Truncated(text string) bool {
 // Recheck grades again, with the current checks, the response texts kept in OutDir for the cells of prev, which keep
 // their tokens, bytes and latencies. Cells that did not complete are left as they are. No server is called. A kept
 // text is an error for postgres-dba-mcp when it starts with `ERROR:`.
+// shortcut: a Live scenario is checked against the statistics of now, not those of its call; rerun n2 for it.
 func (r *Runner) Recheck(ctx context.Context, prev []results.N2Row) ([]results.N2Row, error) {
 	all := All()
 	if len(prev) != len(all) {

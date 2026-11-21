@@ -1,9 +1,10 @@
 package ops
 
 import (
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
 )
 
 func TestParseMem(t *testing.T) {
@@ -47,29 +48,44 @@ func TestMedianMeasure(t *testing.T) {
 	}
 }
 
-func TestParseSamples(t *testing.T) {
+func TestParseHost(t *testing.T) {
 	tests := []struct {
-		file    string
-		parse   func(string) (float64, error)
-		want    float64
+		in      string
+		want    string
 		wantErr bool
 	}{
-		{"footprint-darwin.txt", parseFootprint, 801.0 / 1024, false},
-		{"footprint-darwin-mb.txt", parseFootprint, 36, false},
-		{"proc-status-linux.txt", parseVmRSS, 30, false},
-		{"proc-status-linux.txt", parseFootprint, 0, true},
-		{"footprint-darwin.txt", parseVmRSS, 0, true},
+		{`{"OperatingSystem":"Ubuntu 24.04.3 LTS","Architecture":"x86_64","NCPU":4,"MemTotal":16766734336,"Name":"runner"}`,
+			"Ubuntu 24.04.3 LTS, x86_64, 4 CPUs, 15.6 GiB", false},
+		{`{"OperatingSystem":"Docker Desktop","Architecture":"aarch64","NCPU":0,"MemTotal":0}`, "", true},
+		{`not json`, "", true},
 	}
 	for _, tt := range tests {
-		t.Run(tt.file, func(t *testing.T) {
-			b, err := os.ReadFile(filepath.Join("testdata", tt.file))
-			if err != nil {
-				t.Fatal(err)
-			}
-			got, err := tt.parse(string(b))
-			if (err != nil) != tt.wantErr || got != tt.want {
-				t.Errorf("got %v, %v; want %v, err %v", got, err, tt.want, tt.wantErr)
-			}
-		})
+		got, err := parseHost([]byte(tt.in))
+		if (err != nil) != tt.wantErr || got != tt.want {
+			t.Errorf("parseHost(%s) = %q, %v; want %q, err %v", tt.in, got, err, tt.want, tt.wantErr)
+		}
+	}
+}
+
+func TestTable(t *testing.T) {
+	o := results.Ops{
+		Env:         results.Env{Servers: []results.ServerEnv{{Name: "dba", Version: "0.3.3"}, {Name: "crystal", Version: "0.3.0"}}},
+		Host:        "Ubuntu, x86_64, 4 CPUs, 15.6 GiB",
+		SizeMB:      map[string]results.Measure{"dba": {Value: 23.4}, "crystal": {Value: 395}},
+		ColdStartMS: map[string]results.Measure{"dba": {Value: 512.2}, "crystal": {Value: 2337}},
+		RSSMB: map[string]results.Measure{
+			"dba":     medianMeasure([]float64{24.6, 9.3, 8.7}, MemNote),
+			"crystal": {Skipped: true, Note: "needs Pagila"},
+		},
+	}
+	got := Table(o)
+	for _, want := range []string{
+		"Host: Ubuntu, x86_64, 4 CPUs, 15.6 GiB",
+		"| dba 0.3.3 | 23 MB | 512 ms | 9.3 MB (24.6, 9.3, 8.7) |",
+		"| crystal 0.3.0 | 395 MB | 2337 ms | skipped (needs Pagila) |",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("table lacks %q:\n%s", want, got)
+		}
 	}
 }

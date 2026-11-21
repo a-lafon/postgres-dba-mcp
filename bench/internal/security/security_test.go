@@ -43,11 +43,11 @@ func TestDiff(t *testing.T) {
 }
 
 func TestParseCorpus(t *testing.T) {
-	cases, err := ParseCorpus("-- case: a write\nDELETE FROM t;\n\n-- case: b multi\nSELECT 1; -- harmless\nDELETE FROM t;\n")
+	cases, err := ParseCorpus("-- case: a write\nDELETE FROM t;\n\n-- case: b multi\n-- source: https://example.com/b\nSELECT 1; -- harmless\nDELETE FROM t;\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Case{{"a", "write", "DELETE FROM t;"}, {"b", "multi", "SELECT 1; -- harmless\nDELETE FROM t;"}}
+	want := []Case{{"a", "write", "DELETE FROM t;", ""}, {"b", "multi", "SELECT 1; -- harmless\nDELETE FROM t;", "https://example.com/b"}}
 	if !reflect.DeepEqual(cases, want) {
 		t.Errorf("cases = %+v, want %+v", cases, want)
 	}

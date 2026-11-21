@@ -20,11 +20,16 @@ type Case struct {
 	ID       string
 	Category string
 	SQL      string
+	Source   string // where the case comes from, for the external corpus
 }
 
-const caseMarker = "-- case: "
+const (
+	caseMarker   = "-- case: "
+	sourceMarker = "-- source: "
+)
 
-// ParseCorpus reads a corpus: `-- case: <id> <category>` lines, each followed by the SQL of the case.
+// ParseCorpus reads a corpus: `-- case: <id> <category>` lines, each followed by the SQL of the case. A
+// `-- source: <url>` line inside a case gives its source and is not part of its SQL.
 func ParseCorpus(text string) ([]Case, error) {
 	var cases []Case
 	var cur *Case
@@ -44,6 +49,10 @@ func ParseCorpus(text string) ([]Case, error) {
 				return nil, fmt.Errorf("corpus line %q: want `-- case: <id> <category>`", line)
 			}
 			cur = &Case{ID: f[0], Category: f[1]}
+			continue
+		}
+		if rest, ok := strings.CutPrefix(line, sourceMarker); ok && cur != nil {
+			cur.Source = strings.TrimSpace(rest)
 			continue
 		}
 		sql = append(sql, line)
@@ -73,12 +82,15 @@ func Channels(cases []Case) []string {
 	return out
 }
 
-// Replayer replays corpora against the fixture service of bench/compose.yml.
+// Replayer replays corpora against the fixture service of bench/compose.yml, or against the bench database when Reset
+// is set.
 type Replayer struct {
 	Compose  string // path of bench/compose.yml
 	AdminDSN string
 	Channels []string
 	Log      io.Writer
+	// Reset puts the database back after a side effect; nil recreates the fixture service.
+	Reset func(context.Context) error
 
 	admin    *pgx.Conn
 	sentinel *Sentinel
@@ -96,8 +108,26 @@ func (r *Replayer) Open(ctx context.Context) error {
 		_ = admin.Close(ctx)
 		return err
 	}
+	// A server can leave a lock behind (an open transaction): a snapshot then fails instead of waiting forever.
+	if _, err := admin.Exec(ctx, "SET statement_timeout = '120s'; SET lock_timeout = '20s'"); err != nil {
+		_ = admin.Close(ctx)
+		s.Close(ctx)
+		return fmt.Errorf("set admin timeouts: %w", err)
+	}
 	r.admin, r.sentinel = admin, s
 	return nil
+}
+
+// reset puts the database back with Reset, or recreates the fixture, then reconnects.
+func (r *Replayer) reset(ctx context.Context) error {
+	if r.Reset == nil {
+		return r.Recreate(ctx)
+	}
+	r.Close(ctx)
+	if err := r.Reset(ctx); err != nil {
+		return err
+	}
+	return r.Open(ctx)
 }
 
 // Close drops the admin and sentinel connections.
@@ -165,7 +195,7 @@ func (r *Replayer) Replay(ctx context.Context, spec servers.Spec, cases []Case, 
 			}
 			if d := Diff(before, after); len(d) > 0 {
 				sc.SideEffect = strings.Join(d, "; ")
-				if err := r.Recreate(ctx); err != nil {
+				if err := r.reset(ctx); err != nil {
 					return nil, err
 				}
 				restart = true
