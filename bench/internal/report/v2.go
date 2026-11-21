@@ -1156,6 +1156,10 @@ func renderV2Costs(sb *strings.Builder, in V2) {
 		sb.WriteString("with estimated tokens, parts B and D call no model either.\n\n")
 		return
 	}
-	fmt.Fprintf(sb, "part %s counted its tokens through %s, whose cost the harness logs but does not store; "+
-		"[PROTOCOL.md §10](PROTOCOL.md#10-cost) gives it.\n\n", strings.Join(counted, " and part "), results.CounterClaude)
+	its := "its"
+	if len(counted) > 1 {
+		its = "their"
+	}
+	fmt.Fprintf(sb, "part %s counted %s tokens through %s, whose cost the harness logs but does not store; "+
+		"[PROTOCOL.md §10](PROTOCOL.md#10-cost) gives it.\n\n", strings.Join(counted, " and part "), its, results.CounterClaude)
 }
