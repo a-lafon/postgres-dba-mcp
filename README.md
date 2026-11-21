@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<p align="center"><b>Bounded, read-only PostgreSQL access for AI assistants.</b></p>
+<p align="center"><b>Bounded, read-only PostgreSQL MCP server for AI assistants.</b></p>
 
 <p align="center"><img alt="Three Claude Code questions on the Pagila sample database: execute_sql returns the top films by revenue as compact CSV with a row-count footer, analyze_db_health finds duplicate indexes on the payment partitions, and explain_query with a hypothetical index shows the estimated cost of a query dropping from 310 to 34" src="assets/demo.gif" width="860"></p>
 
