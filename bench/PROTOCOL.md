@@ -407,3 +407,11 @@ is listed here with its date and reason, and in the report.
   (170 runs), the judge and the calibration ran before the tag, in place of the order of §11, and the four rubric fixes
   above came after that run. The calibration sheet was drawn from the full run's answers rather than the pilot's, and
   kept at 40 answers: the maintainer filled all of it. Results in §7; costs in §10.
+- **2026-11-21, before the freeze: S15 checked at call time.** In the pilot of part D, S15 (`get_top_queries` by total
+  time) failed on both servers. Its expected top 10 was read from `pg_stat_statements` before any scenario ran, and the
+  scenarios that ran before it on the same server (S03, the `EXPLAIN ANALYZE` of S14) entered the statistics and pushed
+  the expected tenth statement out. The top-queries scenarios (S15, S16) now read their expectation right before each
+  server's call. Neither server was at fault.
+- **2026-11-21, before the freeze: agent SQL in part C.** The fourth corpus of part C is the 158 distinct statements
+  the agents sent through `execute_sql` in the full run of part A, without the 4 `DELETE` statements of A14 (3 sent by
+  crystaldba's agent, 1 by postgres-dba-mcp's), which are writes and not legitimate reads.
