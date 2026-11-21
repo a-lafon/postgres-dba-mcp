@@ -156,7 +156,7 @@ func (x *executor) execute(ctx context.Context, sql string, lim limits) (result,
 			run = withVolatilityGate(run, st.Unresolved)
 		}
 		// Read only and always rolled back: bounding the work the server does is the point.
-		return runStatement(ctx, run, sql, st.Kind == safesql.Select, false /* drain */, lim)
+		return runStatement(ctx, run, sql, st.Kind == safesql.Select, false /* drain */, lim, x.run.VectorTypes)
 	}
 	count, kind, err := safesql.Classify(sql)
 	switch {
@@ -176,5 +176,5 @@ func (x *executor) execute(ctx context.Context, sql string, lim limits) (result,
 	// to find, so such a statement is not drained; upgrade by resolving views, policies, operators and casts
 	// in the catalog, the way the restricted-mode gate would have to.
 	cursor := kind == safesql.Select
-	return runStatement(ctx, x.run.ReadWrite, sql, cursor, cursor && safesql.HasFuncCall(sql), lim)
+	return runStatement(ctx, x.run.ReadWrite, sql, cursor, cursor && safesql.HasFuncCall(sql), lim, x.run.VectorTypes)
 }

@@ -201,6 +201,17 @@ func TestRestrictedExecution(t *testing.T) {
 			t.Errorf("got %q\nwant %q", got, want)
 		}
 	})
+	t.Run("vector summarized by type, not by text", func(t *testing.T) {
+		sql := `SELECT 1 AS id, '[1,2,3]'::vector AS embedding, '[1,2,3]'::vector::text AS as_text,
+			'[1,2,3]'::json AS looks_like_one, NULL::vector AS nothing, '[1,2]'::halfvec AS half,
+			'[1.5,2.5]'::exec.floatrange AS user_range`
+		want := "id,embedding,as_text,looks_like_one,nothing,half,user_range\n" +
+			`1,[vector: 3 dims],"[1,2,3]","[1,2,3]",\N,[vector: 2 dims],"[1.5,2.5]"` + "\n" +
+			"-- 1 row, <d>\n"
+		if got := withoutDuration(c.ok(t, sql)); got != want {
+			t.Errorf("got %q\nwant %q", got, want)
+		}
+	})
 	t.Run("backslashes and control characters are lossless", func(t *testing.T) {
 		sql := `SELECT * FROM (VALUES (1, E'l1\nl2'), (2, 'a\nb'), (3, 'a\\b'), (4, 'a\'), (5, '\x41'),
 			(6, 'C:\temp\new'), (7, '\N'), (8, NULL), (9, '\xdeadbeef'::bytea::text)) AS t(id, v) ORDER BY id`
@@ -305,7 +316,7 @@ func TestBoundedReadOfLargeValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	res, err := collect(context.Background(), tx, sql, limits{rows: 20, cell: 200, bytes: 32768})
+	res, err := collect(context.Background(), tx, sql, limits{rows: 20, cell: 200, bytes: 32768}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

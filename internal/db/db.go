@@ -95,13 +95,15 @@ type DB struct {
 	// searchPath is what the connection URI asked for, empty when it asked for nothing.
 	searchPath string
 
-	mu         sync.Mutex
-	info       *Info
-	infoRead   time.Time
-	hypopg     bool // last catalog answer of hasHypopg, for the calls that never read Info
-	hypopgRead time.Time
-	audit      auditState
-	auditDone  chan struct{} // closed once the role audit has completed
+	mu          sync.Mutex
+	info        *Info
+	infoRead    time.Time
+	hypopg      bool // last catalog answer of hasHypopg, for the calls that never read Info
+	hypopgRead  time.Time
+	vectors     map[uint32]bool // last answer of VectorTypes
+	vectorsRead time.Time
+	audit       auditState
+	auditDone   chan struct{} // closed once the role audit has completed
 }
 
 type auditState int
@@ -223,6 +225,40 @@ func (d *DB) hasHypopg(ctx context.Context, conn *pgx.Conn) (bool, error) {
 	d.hypopg, d.hypopgRead = ok, time.Now()
 	d.mu.Unlock()
 	return ok, nil
+}
+
+// vectorTypesSQL finds the types of the pgvector extension whose text form is a bracketed list of numbers. An
+// extension type has no fixed OID, and a type of the same name may belong to a user, so the extension must own it.
+const vectorTypesSQL = `SELECT t.oid FROM pg_type t
+JOIN pg_depend d ON d.classid = 'pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e'
+JOIN pg_extension e ON e.oid = d.refobjid
+WHERE e.extname = 'vector' AND t.typname IN ('vector', 'halfvec')`
+
+// VectorTypes returns the OIDs of pgvector's vector and halfvec types, empty without pgvector. A stale answer is
+// read again through t, the caller's transaction, so that a fresh one costs no transaction of its own.
+func (d *DB) VectorTypes(ctx context.Context, t pgx.Tx) (map[uint32]bool, error) {
+	d.mu.Lock()
+	cached, fresh := d.vectors, time.Since(d.vectorsRead) < infoTTL
+	d.mu.Unlock()
+	if cached != nil && fresh {
+		return cached, nil
+	}
+	rows, err := t.Query(ctx, vectorTypesSQL)
+	if err != nil {
+		return nil, err
+	}
+	oids, err := pgx.CollectRows(rows, pgx.RowTo[uint32])
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[uint32]bool, len(oids))
+	for _, o := range oids {
+		m[o] = true
+	}
+	d.mu.Lock()
+	d.vectors, d.vectorsRead = m, time.Now()
+	d.mu.Unlock()
+	return m, nil
 }
 
 // tx wraps pgx.Tx so that every statement travels on the extended protocol, which accepts a single statement.
