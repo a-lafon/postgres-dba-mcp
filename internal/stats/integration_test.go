@@ -188,7 +188,8 @@ func TestTimeRankings(t *testing.T) {
 func TestMultiLineQueryCollapsed(t *testing.T) {
 	resetStats(t)
 	exec(t, testpg.RO(t), 1, "SELECT\n\t1   AS\n    multi_line_marker")
-	text, isErr := callTool(t, testpg.RO(t), map[string]any{"sort_by": "total_time"})
+	// Highest limit: the marker is the cheapest statement, so in a top 10 it can rank below the driver's own statements.
+	text, isErr := callTool(t, testpg.RO(t), map[string]any{"sort_by": "total_time", "limit": 100})
 	if isErr {
 		t.Fatal(text)
 	}
