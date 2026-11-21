@@ -17,8 +17,10 @@ services:
       POSTGRES_DB: pgdba
       # Explicit because postgres:18 moved its default data directory; the tmpfs gives a clean cluster at every start.
       PGDATA: /var/lib/postgresql/data
+    # Host ports stay below 32768: in Linux's ephemeral range (32768-60999) an outbound connection can hold the port,
+    # as one did with 55432 on a CI runner.
     ports:
-      - "55432:5432"
+      - "25432:5432"
     tmpfs:
       - /var/lib/postgresql/data
     volumes:
@@ -41,7 +43,7 @@ services:
       POOL_MODE: transaction
       AUTH_TYPE: scram-sha-256
     ports:
-      - "56432:5432"
+      - "26432:5432"
     depends_on:
       pg:
         condition: service_healthy

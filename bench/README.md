@@ -2,7 +2,7 @@
 
 Measures postgres-dba-mcp against crystaldba/postgres-mcp 0.3.0 and writes `report.md` with the go/no-go verdict. It is its own Go module: its dependencies (the Anthropic SDK in particular) never reach the server's `go.mod`. The method, the targets and the published results are in [`../BENCHMARK.md`](../BENCHMARK.md).
 
-Requirements: Go 1.26 or newer (`go.mod` pins a newer toolchain, which the `go` command fetches on its own unless `GOTOOLCHAIN=local`), Docker with Compose (and the `golang:1.26-alpine` image, pulled on first use, which builds the linux image), and for N3 only the `claude` CLI. Port 55433 (bench database) and 55434 (security fixture) must be free; the repository's own fixture on 55432 is never touched.
+Requirements: Go 1.26 or newer (`go.mod` pins a newer toolchain, which the `go` command fetches on its own unless `GOTOOLCHAIN=local`), Docker with Compose (and the `golang:1.26-alpine` image, pulled on first use, which builds the linux image), and for N3 only the `claude` CLI. Port 55433 (bench database) and 55434 (security fixture) must be free; the repository's own fixture on 25432 is never touched.
 
 ## Which levels need a model
 
