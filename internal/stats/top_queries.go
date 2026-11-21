@@ -46,7 +46,7 @@ var (
 
 const inputSchema = `{"type":"object","properties":{` +
 	`"sort_by":{"type":"string","enum":["resources","total_time","mean_time"],"default":"resources",` +
-	`"description":"Rank by total execution time, mean time per call, or overall resource use."},` +
+	`"description":"resources: statements over 5% of time, I/O or WAL, by total time. total_time: total execution time. mean_time: mean time per call."},` +
 	`"limit":{"type":"integer","minimum":1,"maximum":100,"default":10,"description":"Number of queries to return"}}}`
 
 // statsDB is what the tool needs from the database: version and extensions, and read-only transactions.
