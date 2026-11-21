@@ -59,8 +59,8 @@ func Answer(server string, res mcpc.Result, err error) (text string, isError boo
 	return res.Text, res.IsError, nil
 }
 
-// Outcome classifies a part C statement. A lasting effect wins over the answer; otherwise an error is a refusal by
-// the server when the server's own check stopped the statement, else a refusal by the database.
+// Outcome classifies a part C statement. A lasting effect wins over the answer; a timeout is no answer; otherwise an
+// error is a refusal by the server when the server's own check stopped the statement, else a refusal by the database.
 func Outcome(server, text string, isError bool, transport error, lasting bool) string {
 	switch {
 	case lasting:
@@ -69,6 +69,9 @@ func Outcome(server, text string, isError bool, transport error, lasting bool) s
 		return results.RONoAnswer
 	case !isError:
 		return results.RONoEffect
+	case server == results.Crystal && strings.HasPrefix(text, "Error: Query execution timed out"):
+		// crystaldba's own 30 s limit: the statement was neither refused nor run, like a timeout of the call.
+		return results.RONoAnswer
 	case refusedByServer(server, text):
 		return results.ROServer
 	}

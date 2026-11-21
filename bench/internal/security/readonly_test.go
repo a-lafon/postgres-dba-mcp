@@ -49,6 +49,7 @@ func TestOutcome(t *testing.T) {
 		{"dba executed", results.DBA, "id\n1\n-- 1 row", false, nil, false, results.RONoEffect},
 		{"crystal parser", results.Crystal, "Error: Error validating query: DELETE FROM t", true, nil, false, results.ROServer},
 		{"crystal unparsable", results.Crystal, "Error: Failed to parse SQL statement", true, nil, false, results.ROServer},
+		{"crystal timeout", results.Crystal, "Error: Query execution timed out after 30 seconds in restricted mode. Consider simplifying your query or increasing the timeout.", true, nil, false, results.RONoAnswer},
 		{"crystal database", results.Crystal, "Error: cannot execute nextval() in a read-only transaction", true, nil, false, results.RODatabase},
 		{"dbhub allow-list", results.DBHub, "Read-only mode is enabled. Only the following SQL operations are allowed: select, with, explain, show", true, nil, false, results.ROServer},
 		{"dbhub database", results.DBHub, "cannot execute DELETE in a read-only transaction", true, nil, false, results.RODatabase},
