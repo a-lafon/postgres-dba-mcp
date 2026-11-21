@@ -24,7 +24,7 @@ func inputErrorf(f string, a ...any) error { return &inputError{fmt.Sprintf(f, a
 var objectTypes = []string{"table", "view", "sequence", "extension"}
 
 // objectTypeSchema is the input schema property shared by list_objects and get_object_details.
-const objectTypeSchema = `{"type":"string","description":"Object type: 'table', 'view', 'sequence', or 'extension'","default":"table","enum":["table","view","sequence","extension"]}`
+const objectTypeSchema = `{"type":"string","description":"Object type","default":"table","enum":["table","view","sequence","extension"]}`
 
 // checkObjectType rejects an object_type outside objectTypes.
 func checkObjectType(t string) error {

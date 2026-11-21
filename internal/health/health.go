@@ -31,19 +31,17 @@ var (
 	cacheHitThreshold       = 0.95
 )
 
-const toolDescription = `Analyzes database health. Here are the available health checks:
-- index - checks for invalid, duplicate, bloated and rarely used indexes
-- connection - checks the number of connections and their utilization
-- vacuum - checks transaction id wraparound and dead rows
-- sequence - checks sequences at risk of exceeding their maximum value
-- replication - checks replication health including lag and slots
-- buffer - checks for buffer cache hit rates for indexes and tables
-- constraint - checks for invalid constraints
-- all - runs all checks
-You can optionally specify a single health check or a comma-separated list of health checks. The default is 'all' checks.`
+const toolDescription = `Analyzes database health. health_type is one check, a comma-separated list of them, or all (the default):
+- index - invalid, duplicate, bloated and rarely used indexes
+- connection - connection count and utilization
+- vacuum - transaction id wraparound and dead rows
+- sequence - sequences near their maximum value
+- replication - lag and slots
+- buffer - cache hit rates for indexes and tables
+- constraint - invalid constraints`
 
 const inputSchema = `{"type":"object","properties":{"health_type":{"type":"string","default":"all",` +
-	`"description":"Optional. Valid values are: all, buffer, connection, constraint, index, replication, sequence, vacuum."}}}`
+	`"description":"all, buffer, connection, constraint, index, replication, sequence, vacuum, or several separated by commas."}}}`
 
 // readOnlyRunner is the only database capability the checks need: they never write, whatever the access mode.
 type readOnlyRunner interface {
