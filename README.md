@@ -11,44 +11,29 @@
 
 Let Claude Code, Codex or any MCP client explore a PostgreSQL database, run SQL, read query plans, test hypothetical indexes, find the slowest queries and check the database's health, without flooding the model's context or escaping read-only mode.
 
-A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It is a drop-in replacement for [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0, with its nine tools under the same names and the same parameters, plus `analyze_locks` of its own, in one static binary. That project's last commit is from August 2026, and its 0.3.0 no longer installs from PyPI ([#237](https://github.com/crystaldba/postgres-mcp/issues/237)). Switching is one line of client configuration; what the model receives changes (compact CSV, bounded results, one statement per call), as listed in [MIGRATION.md](MIGRATION.md).
+A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It is a drop-in replacement for [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0, with the same nine tools and parameters plus `analyze_locks`; switching is one line of client configuration, and [MIGRATION.md](MIGRATION.md) lists what changes.
 
 ## Why
 
-crystaldba/postgres-mcp gives an assistant the right DBA tools: schema, SQL, plans with hypothetical indexes, top queries, health checks, index advice. Three things got in the way of using it every day:
-
-- **Unbounded, verbose results.** Rows come back as Python `repr` with no size limit. A plain `SELECT` on a big table returns hundreds of thousands of tokens, or fails.
-- **A restricted mode that can be bypassed.** Function names are not checked in `FROM`, so a "read-only" call can still run functions such as `pg_read_file` or `pg_advisory_lock` ([CVE-2026-85620](https://github.com/advisories/GHSA-cm87-gp55-7cgj)).
-- **Weight.** A Python container of about 300 MB that sits at about 250 MB of memory.
-
-What the model receives changes:
-
-- compact CSV with an explicit footer, every result capped in rows, bytes and cell length, and every cut announced;
-- a restricted mode, on by default, that parses each statement with PostgreSQL's own parser (libpg_query) and checks every function call anywhere in it, inside a read-only transaction;
-- one static Go binary that starts in milliseconds.
+- **Bounded, announced results.** Compact CSV with an explicit footer. Every result is capped in rows, bytes and cell length, and every cut is announced.
+- **A restricted mode, on by default.** Each statement is parsed with PostgreSQL's own parser (libpg_query), every function it names is checked wherever it stands, and it runs inside a read-only transaction.
+- **One static Go binary** that starts in milliseconds.
 
 ## Measured
 
-Against crystaldba/postgres-mcp 0.3.0 on the same PostgreSQL 17 database and the same read-only role, measured on [`959bb72`](https://github.com/a-lafon/postgres-dba-mcp/commit/959bb72) on 2026-11-01, except the agent tasks:
+Against crystaldba/postgres-mcp 0.3.0 on the same PostgreSQL 17 database and read-only role, on [`959bb72`](https://github.com/a-lafon/postgres-dba-mcp/commit/959bb72):
 
-- **61 % fewer** tokens per `execute_sql` response: median of the 4 scenarios both servers answered (S01, S04, S05, S06). Every result is capped at 32 kB, where crystaldba returns up to 268k tokens or fails;
-- **131 of 131** attack statements refused in restricted mode, where crystaldba executes 10;
-- **9 MB** of memory against 246 MB, both in a Linux container; cold start of **13 ms** for the binary run directly, against 2.3 s for crystaldba including `docker run`;
-- **27 of 27** agent tasks solved with Claude Code, against 25 of 27 — the one dated measure here: 2026-10-22, on 0.1.0, before the volatility gate and before `analyze_locks`.
+- **61 % fewer** tokens than 0.3.0 per `execute_sql` response, median of the 4 scenarios both servers answered (2026-11-01);
+- **131 of 131** attack statements refused in restricted mode, where 0.3.0 executes 10 (2026-11-01);
+- **9 MB** of memory against 246 MB for 0.3.0, both in a Linux container (2026-11-01).
 
-The other side: the tool definitions are 39 % larger (2732 tokens for ten tools against 1962 for crystaldba's nine), and the tokens of a whole agent task are comparable. Drop `locks` from `--tools` to get the 0.3.0 tool set exactly.
+The other side: the tool definitions are 39 % larger, 2732 tokens for ten tools against 1962 for nine (2026-11-01).
 
-Method, every number (including where postgres-dba-mcp does worse) and charts: [BENCHMARK.md](BENCHMARK.md). The harness that produced them is in [bench](bench), with its inputs: the data set in [bench/data](bench/data), the attack and legitimate corpora in [testdata/safesql](testdata/safesql), and the scenarios and tasks listed in BENCHMARK.md. `cd bench && go run ./cmd/bench all` redoes the security, memory, cold start and scenario measures with no model account; exact token counts take `--tokens=claude` or an `ANTHROPIC_API_KEY`, and the agent tasks and their judge need the `claude` CLI. Prerequisites and what each level needs: [bench/README.md](bench/README.md).
+Method and every number, including where postgres-dba-mcp does worse: [BENCHMARK.md](BENCHMARK.md). To run the harness: [bench/README.md](bench/README.md).
 
 ## What the model receives
 
-The same `SELECT * FROM types` through both servers. crystaldba 0.3.0:
-
-```
-[{'id': 1, 'txt': 'hello', 'empty': '', 'num': Decimal('532.10'), 'arr': [1, 2], 'iv': datetime.timedelta(days=1, seconds=7200), 'ts': datetime.datetime(2026, 3, 2, 10, 14, tzinfo=zoneinfo.ZoneInfo(key='Etc/UTC')), 'bin': b'\xde\xad\xbe\xef'}, {'id': 2, 'txt': None, 'empty': None, 'num': None, 'arr': None, 'iv': None, 'ts': None, 'bin': None}]
-```
-
-postgres-dba-mcp:
+`SELECT * FROM types`:
 
 ```
 id,txt,empty,num,arr,iv,ts,bin
@@ -57,7 +42,7 @@ id,txt,empty,num,arr,iv,ts,bin
 -- 2 rows, 2 ms
 ```
 
-Values keep their PostgreSQL text form, `NULL` (`\N`) stays distinct from an empty string, and the footer says how many rows came back and whether anything was cut.
+Values keep their PostgreSQL text form, `NULL` (`\N`) stays distinct from an empty string, and the footer says how many rows came back and whether anything was cut. The 0.3.0 server returned the same rows as Python `repr`, with no size limit ([MIGRATION.md](MIGRATION.md) has the details).
 
 ## Install
 
@@ -319,7 +304,7 @@ Layers, from the outside in:
 1. **The database role.** It decides what can be read. Use the read-only role above.
 2. **A read-only transaction.** Every tool except `execute_sql` in unrestricted mode runs inside `BEGIN TRANSACTION READ ONLY`, which is always rolled back. Postgres itself refuses writes.
 3. **The statement check (restricted mode).** `execute_sql` accepts exactly one statement of the kind `SELECT` (including `VALUES`, `TABLE` and `WITH ... SELECT`), `EXPLAIN` of one of those, or `SHOW`. It refuses `SELECT ... INTO`, row locking (`FOR UPDATE`), data-modifying `WITH`, transaction control, `SET`, `COPY` and everything else, and it says why. Statements travel to Postgres over the extended query protocol, which carries one statement per message, so a second statement cannot ride along on a call the check let through. A refusal that `--access-mode=unrestricted` would have run names that flag, except for a function of the denylist below: that mode is what denies it.
-4. **A function denylist, checked on the whole statement.** Every function the statement names is checked, wherever it stands: in `FROM`, in a subquery, in a CTE, in an argument. A function the statement does not name, because an operator, a cast or a view reaches it, is not checked (see the limits below). The built-in list covers large objects (`lo_*`), `set_config`, advisory locks, `pg_notify`, backend cancel and terminate, server file reads (`pg_read_file`, `pg_ls_*`), replication slot and WAL control, statistics resets, index maintenance (`brin_summarize_*`, `gin_clean_pending_list`), planner statistics writes (`pg_restore_*_stats`, `pg_clear_*_stats`), `pg_upgrade` and `initdb` helpers, `dblink*`, `query_to_xml*`, `ts_rewrite`, the SQL-string functions of `tablefunc` and `xml2` (`crosstab*`, `connectby`, `xpath_table`), and the file or HTTP functions of risky extensions. Every volatile function of `pg_catalog` in PostgreSQL 14 to 18 is either on this list or reviewed as safe, and a test fails on any new one.
+4. **A function denylist, checked on the whole statement.** Every function the statement names is checked, wherever it stands: in `FROM`, in a subquery, in a CTE, in an argument. This closes the bypass of crystaldba/postgres-mcp 0.3.0, which does not check function names in `FROM`, so a "read-only" call can run functions such as `pg_read_file` or `pg_advisory_lock` ([CVE-2026-85620](https://github.com/advisories/GHSA-cm87-gp55-7cgj)). A function the statement does not name, because an operator, a cast or a view reaches it, is not checked (see the limits below). The built-in list covers large objects (`lo_*`), `set_config`, advisory locks, `pg_notify`, backend cancel and terminate, server file reads (`pg_read_file`, `pg_ls_*`), replication slot and WAL control, statistics resets, index maintenance (`brin_summarize_*`, `gin_clean_pending_list`), planner statistics writes (`pg_restore_*_stats`, `pg_clear_*_stats`), `pg_upgrade` and `initdb` helpers, `dblink*`, `query_to_xml*`, `ts_rewrite`, the SQL-string functions of `tablefunc` and `xml2` (`crosstab*`, `connectby`, `xpath_table`), and the file or HTTP functions of risky extensions. Every volatile function of `pg_catalog` in PostgreSQL 14 to 18 is either on this list or reviewed as safe, and a test fails on any new one.
 5. **A volatility gate on every other function (restricted mode).** A read-only transaction refuses SQL writes, but not what an extension does in C, in another session, or outside the database. So a call that no rule above settles is resolved against `pg_proc`, in the transaction that is about to run the statement, and refused when it reaches a `VOLATILE` function that PostgreSQL does not ship and that no review cleared. `IMMUTABLE` and `STABLE` functions pass, which keeps PostGIS, pgvector and your own read-only functions usable. A function left `VOLATILE`, the default of `CREATE FUNCTION`, is refused with a message naming it: declare it `STABLE` if it only reads, or pass `--allow-function`. Resolution follows the search path, and since the overload the server picks depends on argument types the catalog query cannot know, a name is refused as soon as one function it can reach is volatile and unreviewed: redefining a built-in name in a schema on the search path makes calls to that name refused, not allowed. Only a statement that evaluates its functions pays for the lookup.
 6. **Server-side limits.** Every transaction sets `statement_timeout` (`--statement-timeout`), `lock_timeout` (10 s) and `idle_in_transaction_session_timeout` (60 s). A pool of at most 5 connections is cleaned (`DISCARD ALL`, `hypopg_reset()`) when a connection returns to it, so session state does not leak from one call to the next.
 7. **Bounded output.** Rows, bytes and cell length are capped (see Output format). A `SELECT` sent to `execute_sql` is read through a server-side cursor fetched `max_rows + 1` rows at a time, so Postgres computes no more rows than that and the statement is never rewritten to carry a `LIMIT`. The other tools bound their own queries.
