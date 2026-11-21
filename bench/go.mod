@@ -6,7 +6,7 @@ toolchain go1.27.4
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.84.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 )
 
