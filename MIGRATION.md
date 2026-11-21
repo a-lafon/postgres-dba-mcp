@@ -1,5 +1,7 @@
 # Migrating from crystaldba/postgres-mcp 0.3.0
 
+crystaldba/postgres-mcp's last commit is from August 2026, and its 0.3.0 no longer installs from PyPI ([#237](https://github.com/crystaldba/postgres-mcp/issues/237)).
+
 postgres-dba-mcp keeps the nine tool names and their parameters, so an MCP client configuration usually changes only in its `command`. Everything a user can observe that differs is listed below.
 
 Replace the existing server entry rather than adding this one next to it: both expose the same tool names, and a client that sees both may keep calling the old one.
