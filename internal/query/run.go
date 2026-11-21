@@ -20,6 +20,10 @@ const (
 	oidTSVector = 3614 // built-in type tsvector
 )
 
+// vectorTypes returns, in the statement's transaction, the OIDs of the types whose cells are summarized as
+// vectors: db.DB.VectorTypes.
+type vectorTypes func(ctx context.Context, tx pgx.Tx) (map[uint32]bool, error)
+
 // result is what one statement returned: at most maxRows rows, or a command tag when it has no columns.
 type result struct {
 	Columns   []string
@@ -54,15 +58,18 @@ func withVolatilityGate(run txRunner, refs []safesql.FuncRef) txRunner {
 
 // runStatement runs sql in a transaction started by run, through a cursor when cursor is set, drained to its
 // end when drain is set.
-func runStatement(ctx context.Context, run txRunner, sql string, cursor, drain bool, lim limits) (result, error) {
+func runStatement(ctx context.Context, run txRunner, sql string, cursor, drain bool, lim limits, types vectorTypes) (result, error) {
 	var res result
 	err := run(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		vectors, err := types(ctx, tx)
+		if err != nil {
+			return err
+		}
 		start := time.Now()
-		var err error
 		if cursor {
-			res, err = fetchCursor(ctx, tx, sql, drain, lim)
+			res, err = fetchCursor(ctx, tx, sql, drain, lim, vectors)
 		} else {
-			res, err = collect(ctx, tx, sql, lim)
+			res, err = collect(ctx, tx, sql, lim, vectors)
 		}
 		res.Elapsed = time.Since(start)
 		return err
@@ -73,11 +80,11 @@ func runStatement(ctx context.Context, run txRunner, sql string, cursor, drain b
 // fetchCursor declares a cursor on sql and fetches maxRows+1 rows, so the server computes no more than that.
 // When drain is set the rest of the cursor is run and discarded, so that a statement whose rows have side
 // effects is not committed half done.
-func fetchCursor(ctx context.Context, tx pgx.Tx, sql string, drain bool, lim limits) (result, error) {
+func fetchCursor(ctx context.Context, tx pgx.Tx, sql string, drain bool, lim limits, vectors map[uint32]bool) (result, error) {
 	if _, err := tx.Exec(ctx, declarePrefix+sql); err != nil {
 		return result{}, shiftPosition(err)
 	}
-	res, err := collect(ctx, tx, fmt.Sprintf("FETCH FORWARD %d FROM %s", lim.rows+1, cursorName), lim)
+	res, err := collect(ctx, tx, fmt.Sprintf("FETCH FORWARD %d FROM %s", lim.rows+1, cursorName), lim, vectors)
 	if err == nil && res.More && !drain {
 		// A view, an RLS policy, an operator or a cast hides its function calls from the statement text, so ask
 		// the server instead: rows already written mean the statement must run to its end. It has to be the
@@ -98,17 +105,25 @@ func fetchCursor(ctx context.Context, tx pgx.Tx, sql string, drain bool, lim lim
 // collect runs sql and keeps at most maxRows+1 rows, each cell cut to what the renderer can show and the whole
 // within the byte budget; rows.Close drains the rest. Cutting here is what keeps a result of large values
 // bounded: a cell kept whole is held whole, however little of it is rendered.
-func collect(ctx context.Context, tx pgx.Tx, sql string, lim limits) (result, error) {
+// vectors are the OIDs of pgvector's types, whose cells are summarized.
+func collect(ctx context.Context, tx pgx.Tx, sql string, lim limits, vectors map[uint32]bool) (result, error) {
 	rows, err := tx.Query(ctx, sql)
 	if err != nil {
 		return result{}, err
 	}
 	defer rows.Close()
 	var res result
-	var tsvectors []bool // columns whose cells are summarized
+	var summarize []func(string) (string, bool) // per column, nil when the cell is kept as it is
 	for _, fd := range rows.FieldDescriptions() {
 		res.Columns = append(res.Columns, fd.Name)
-		tsvectors = append(tsvectors, fd.DataTypeOID == oidTSVector)
+		switch {
+		case fd.DataTypeOID == oidTSVector:
+			summarize = append(summarize, format.SummarizeTSVector)
+		case vectors[fd.DataTypeOID]:
+			summarize = append(summarize, format.SummarizeVector)
+		default:
+			summarize = append(summarize, nil)
+		}
 	}
 	kept, size, seen := 0, 0, 0
 	for rows.Next() {
@@ -121,8 +136,8 @@ func collect(ctx context.Context, tx pgx.Tx, sql string, lim limits) (result, er
 		short := make([]bool, len(raw))
 		for i, v := range raw {
 			if v != nil {
-				if tsvectors[i] {
-					if s, ok := format.SummarizeTSVector(string(v)); ok {
+				if summarize[i] != nil {
+					if s, ok := summarize[i](string(v)); ok {
 						v = []byte(s)
 					}
 				}

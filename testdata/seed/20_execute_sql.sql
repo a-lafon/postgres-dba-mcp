@@ -2,6 +2,9 @@
 CREATE SCHEMA exec;
 GRANT USAGE ON SCHEMA exec TO pgdba_ro;
 
+-- A range type of the user's: its text, [1.5,2.5], looks like a pgvector value and must not be read as one.
+CREATE TYPE exec.floatrange AS RANGE (subtype = float8);
+
 CREATE TABLE exec.types (
     id    int PRIMARY KEY,
     txt   text,
