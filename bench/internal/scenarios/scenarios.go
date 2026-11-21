@@ -54,6 +54,9 @@ type Scenario struct {
 	Pagila  bool  // needs the Pagila tables
 	Trunc   Trunc // truncation expected from postgres-dba-mcp
 	Prepare func(ctx context.Context, db *pgxpool.Pool) (Call, error)
+	// Live is set when the expectation reads state that the earlier scenarios change (pg_stat_statements records
+	// their own statements), so it is prepared again right before each server's call.
+	Live bool
 }
 
 // Trap names a trap of schema traps and the pattern that proves a report found it.
@@ -369,7 +372,7 @@ func explainAnalyze() Scenario {
 const statementsFilter = `dbid = (SELECT oid FROM pg_database WHERE datname = current_database())`
 
 func topQueries(id, sortBy string) Scenario {
-	return Scenario{ID: id, Tool: "get_top_queries", Prepare: func(ctx context.Context, db *pgxpool.Pool) (Call, error) {
+	return Scenario{ID: id, Tool: "get_top_queries", Live: true, Prepare: func(ctx context.Context, db *pgxpool.Pool) (Call, error) {
 		limit := "10"
 		if sortBy == "resources" {
 			limit = "1"
