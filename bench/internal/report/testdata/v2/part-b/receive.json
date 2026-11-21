@@ -1,0 +1,38 @@
+{
+  "env": {
+    "run_id": "part-b",
+    "token_counter": "estimate",
+    "servers": [
+      {"name": "dba", "version": "0.3.3", "image": "ghcr.io/a-lafon/postgres-dba-mcp:0.3.3@sha256:aaaa", "read_only": "parser: x"},
+      {"name": "crystal", "version": "0.3.0", "image": "crystaldba/postgres-mcp@sha256:bbbb", "read_only": "parser: y"},
+      {"name": "reference", "version": "0.6.2", "image": "bench-reference:0.6.2", "read_only": "read-only transaction: z"}
+    ]
+  },
+  "bounds": "call timeout 2m0s, response cap 256 MiB, container memory 4g",
+  "tools": [
+    {"server": "dba", "tools": 10, "bytes": 7175, "tokens": 1359, "tokens_estimated": true},
+    {"server": "crystal", "tools": 9, "bytes": 5289, "tokens": 1225, "tokens_estimated": true}
+  ],
+  "rows": [
+    {"id": "B2", "sql": "SELECT * FROM rental", "true_rows": 51805, "cells": {
+      "dba": {"outcome": "ok", "bytes": 8442, "tokens": 2111, "tokens_estimated": true, "ms": 21.6, "rows": 100, "truncation": "stated", "stayed_up": true},
+      "crystal": {"outcome": "ok", "bytes": 20294229, "tokens": 5073558, "tokens_estimated": true, "ms": 1108.3, "rows": 51805, "truncation": "none", "stayed_up": true}
+    }},
+    {"id": "B3", "sql": "SELECT * FROM events", "true_rows": 5000000, "cells": {
+      "dba": {"outcome": "ok", "bytes": 6856, "tokens": 1714, "tokens_estimated": true, "ms": 7.7, "rows": 100, "truncation": "stated", "stayed_up": true},
+      "crystal": {"outcome": "error", "bytes": 128, "tokens": 32, "tokens_estimated": true, "ms": 36160.4, "rows": -1, "stayed_up": true, "note": "Error: Query execution timed out | after 30 seconds"},
+      "reference": {"outcome": "no answer", "bytes": 0, "tokens": 0, "ms": 18983, "rows": -1, "stayed_up": false, "note": "container exited exit=137 oom_killed=true"}
+    }},
+    {"id": "B4", "sql": "SELECT id, payload FROM docs WHERE id = 42", "true_rows": 1, "true_cell_bytes": 20012, "cells": {
+      "dba": {"outcome": "ok", "bytes": 326, "tokens": 82, "tokens_estimated": true, "ms": 4, "rows": 1, "truncation": "stated", "stayed_up": true},
+      "crystal": {"outcome": "ok", "bytes": 20037, "tokens": 5010, "tokens_estimated": true, "ms": 15.3, "rows": 1, "truncation": "none", "stayed_up": true}
+    }},
+    {"id": "B6", "sql": "SELECT * FROM precision", "true_rows": 3, "cells": {
+      "dba": {"outcome": "ok", "bytes": 369, "tokens": 93, "ms": 8.7, "rows": 3, "truncation": "none", "values": 15, "stayed_up": true},
+      "crystal": {"outcome": "ok", "bytes": 755, "tokens": 189, "ms": 4.4, "rows": 3, "truncation": "none", "values": 15, "wrong": ["row 3 iv: want 36:00:00"], "reformatted": ["row 2 num: want 0.0000000001"], "stayed_up": true}
+    }},
+    {"id": "B7", "sql": "SELECT nme FROM film", "true_rows": 0, "cells": {
+      "dba": {"outcome": "error", "bytes": 109, "tokens": 28, "ms": 7.8, "rows": -1, "names_column": true, "hint": true, "stayed_up": true, "note": "ERROR: column \"nme\" does not exist"}
+    }}
+  ]
+}

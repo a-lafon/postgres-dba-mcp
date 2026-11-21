@@ -1,0 +1,18 @@
+{
+  "env": {"run_id": "part-d", "token_counter": "estimate", "servers": [
+    {"name": "dba", "version": "0.3.3", "image": "ghcr.io/a-lafon/postgres-dba-mcp:0.3.3@sha256:aaaa", "read_only": "parser: x"},
+    {"name": "crystal", "version": "0.3.0", "image": "crystaldba/postgres-mcp@sha256:bbbb", "read_only": "parser: y"}
+  ]},
+  "max_bytes": 32768,
+  "same_role": true,
+  "rows": [
+    {"id": "S01", "tool": "execute_sql", "cells": {
+      "dba": {"status": "ok", "tokens": 581, "bytes": 2324, "p50_ms": 1.918, "p95_ms": 8.681, "correct": true, "truncation": "none", "latency_ms": [8.681, 1.918, 1.5]},
+      "crystal": {"status": "ok", "tokens": 1569, "bytes": 6275, "p50_ms": 3.453, "p95_ms": 5.408, "correct": true, "truncation": "none", "latency_ms": [5.408, 3.453, 3.1]}
+    }},
+    {"id": "S02", "tool": "execute_sql", "cells": {
+      "dba": {"status": "ok", "tokens": 2111, "bytes": 8443, "p50_ms": 2.81, "p95_ms": 5.292, "correct": true, "truncation": "signalled", "latency_ms": [5.292, 2.81, 2.5]},
+      "crystal": {"status": "failed (oversized)", "tokens": 0, "bytes": 0, "correct": false, "truncation": "none"}
+    }}
+  ]
+}

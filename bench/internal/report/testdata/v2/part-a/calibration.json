@@ -1,0 +1,8 @@
+{
+  "sheet": 1,
+  "filled": 2,
+  "fact_kappa": {"claude-opus-5-5": 0.9, "claude-sonnet-5-5": 0.55},
+  "doubt_kappa": {"claude-opus-5-5": 0.8, "claude-sonnet-5-5": null},
+  "judges_fact_kappa": 0.7,
+  "published": {"claude-opus-5-5": true, "claude-sonnet-5-5": false}
+}

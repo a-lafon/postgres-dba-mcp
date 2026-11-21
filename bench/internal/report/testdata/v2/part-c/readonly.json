@@ -1,0 +1,42 @@
+{
+  "env": {"run_id": "part-c", "token_counter": "estimate", "servers": [
+    {"name": "dba", "version": "0.3.3", "image": "ghcr.io/a-lafon/postgres-dba-mcp:0.3.3@sha256:aaaa", "read_only": "parser: x"},
+    {"name": "crystal", "version": "0.3.0", "image": "crystaldba/postgres-mcp@sha256:bbbb", "read_only": "parser: y"},
+    {"name": "reference", "version": "0.6.2", "image": "bench-reference:0.6.2", "read_only": "read-only transaction: z"}
+  ]},
+  "role": "bench_owner",
+  "corpora": [
+    {"name": "own", "label": "postgres-dba-mcp's own regression corpus", "file": "testdata/safesql/attacks.sql", "cases": 1},
+    {"name": "external", "label": "external attacks, each with its source", "file": "bench/data/external-attacks.sql", "cases": 3},
+    {"name": "legit", "label": "legitimate statements", "file": "testdata/safesql/legit.sql", "cases": 1}
+  ],
+  "servers": [
+    {"server": "dba", "read_only": "parser: the statement is parsed", "corpora": {
+      "own": [{"id": "write-insert", "category": "write", "outcome": "refused by the server"}],
+      "external": [
+        {"id": "ext-advisory-lock", "category": "side-effect-fn", "source": "https://www.postgresql.org/docs/17/functions-admin.html", "outcome": "refused by the server"},
+        {"id": "ext-nextval", "category": "side-effect-fn", "source": "https://www.postgresql.org/docs/17/functions-sequence.html", "outcome": "refused by the database"},
+        {"id": "ext-commit-delete", "category": "commit-escape", "source": "https://securitylabs.datadoghq.com/", "outcome": "refused by the server"}
+      ],
+      "legit": [{"id": "simple-select", "category": "legit", "outcome": "executed, no lasting effect"}]
+    }},
+    {"server": "crystal", "read_only": "parser: pglast", "corpora": {
+      "own": [{"id": "write-insert", "category": "write", "outcome": "refused by the server"}],
+      "external": [
+        {"id": "ext-advisory-lock", "category": "side-effect-fn", "source": "https://www.postgresql.org/docs/17/functions-admin.html", "outcome": "executed, lasting effect", "effect": "advisory locks +1"},
+        {"id": "ext-nextval", "category": "side-effect-fn", "source": "https://www.postgresql.org/docs/17/functions-sequence.html", "outcome": "refused by the database"},
+        {"id": "ext-commit-delete", "category": "commit-escape", "source": "https://securitylabs.datadoghq.com/", "outcome": "refused by the server"}
+      ],
+      "legit": [{"id": "simple-select", "category": "legit", "outcome": "refused by the server"}]
+    }},
+    {"server": "reference", "read_only": "read-only transaction: BEGIN TRANSACTION READ ONLY", "corpora": {
+      "own": [{"id": "write-insert", "category": "write", "outcome": "no answer"}],
+      "external": [
+        {"id": "ext-advisory-lock", "category": "side-effect-fn", "source": "https://www.postgresql.org/docs/17/functions-admin.html", "outcome": "executed, lasting effect", "effect": "advisory locks +1"},
+        {"id": "ext-nextval", "category": "side-effect-fn", "source": "https://www.postgresql.org/docs/17/functions-sequence.html", "outcome": "refused by the database"},
+        {"id": "ext-commit-delete", "category": "commit-escape", "source": "https://securitylabs.datadoghq.com/", "outcome": "executed, lasting effect", "effect": "public.orders content 1000000 -> 999999"}
+      ],
+      "legit": [{"id": "simple-select", "category": "legit", "outcome": "executed, no lasting effect"}]
+    }}
+  ]
+}

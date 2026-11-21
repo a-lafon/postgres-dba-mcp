@@ -1,0 +1,30 @@
+{
+  "env": {
+    "run_id": "part-a",
+    "scale": 1,
+    "pagila": true,
+    "token_counter": "claude -p usage",
+    "model": "sonnet, effort medium",
+    "pg_version": "17.12",
+    "servers": [
+      {"name": "dba", "version": "0.3.3", "image": "ghcr.io/a-lafon/postgres-dba-mcp:0.3.3@sha256:aaaa", "read_only": "parser: x"},
+      {"name": "crystal", "version": "0.3.0", "image": "crystaldba/postgres-mcp@sha256:bbbb", "read_only": "parser: y"}
+    ]
+  },
+  "runs": [
+    {"task": "A01", "server": "dba", "arm": "ro", "rep": 1, "solved": true, "tokens": {"input": 100, "cache_creation": 0, "cache_read": 0, "output": 10}, "turns": 3, "tool_calls": [{"name": "execute_sql", "args": {}}], "tool_errors": 0, "total_cost_usd": 0.01, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:00:00Z"},
+    {"task": "A01", "server": "dba", "arm": "ro", "rep": 2, "solved": true, "tokens": {"input": 200, "cache_creation": 0, "cache_read": 0, "output": 20}, "turns": 3, "tool_calls": [{"name": "execute_sql", "args": {}}], "tool_errors": 0, "total_cost_usd": 0.01, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:05:00Z"},
+    {"task": "A01", "server": "crystal", "arm": "ro", "rep": 1, "solved": true, "tokens": {"input": 300, "cache_creation": 0, "cache_read": 0, "output": 30}, "turns": 3, "tool_calls": [{"name": "execute_sql", "args": {}}], "tool_errors": 0, "total_cost_usd": 0.02, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:10:00Z"},
+    {"task": "A01", "server": "crystal", "arm": "ro", "rep": 2, "solved": false, "tokens": {"input": 400, "cache_creation": 0, "cache_read": 0, "output": 40}, "turns": 3, "tool_calls": [{"name": "execute_sql", "args": {}}], "tool_errors": 0, "total_cost_usd": 0.02, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:15:00Z"},
+    {"task": "A06", "server": "dba", "arm": "ro", "rep": 1, "solved": true, "tokens": {"input": 1000, "cache_creation": 0, "cache_read": 0, "output": 0}, "turns": 2, "tool_calls": [], "tool_errors": 0, "total_cost_usd": 0.01, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:20:00Z"},
+    {"task": "A06", "server": "dba", "arm": "ro", "rep": 2, "solved": true, "tokens": {"input": 1200, "cache_creation": 0, "cache_read": 0, "output": 0}, "turns": 2, "tool_calls": [], "tool_errors": 0, "total_cost_usd": 0.01, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:25:00Z"},
+    {"task": "A06", "server": "crystal", "arm": "ro", "rep": 1, "solved": true, "tokens": {"input": 3000, "cache_creation": 0, "cache_read": 0, "output": 0}, "turns": 2, "tool_calls": [], "tool_errors": 0, "total_cost_usd": 0.02, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:30:00Z"},
+    {"task": "A06", "server": "crystal", "arm": "ro", "rep": 2, "solved": true, "tokens": {"input": 3400, "cache_creation": 0, "cache_read": 0, "output": 0}, "turns": 2, "tool_calls": [], "tool_errors": 0, "total_cost_usd": 0.02, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:35:00Z"},
+    {"task": "A07", "server": "dba", "arm": "ro", "rep": 1, "solved": true, "tokens": {"input": 500, "cache_creation": 0, "cache_read": 0, "output": 0}, "turns": 2, "tool_calls": [], "tool_errors": 0, "total_cost_usd": 0.01, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:40:00Z"},
+    {"task": "A07", "server": "dba", "arm": "ro", "rep": 2, "solved": true, "tokens": {"input": 700, "cache_creation": 0, "cache_read": 0, "output": 0}, "turns": 2, "tool_calls": [], "tool_errors": 0, "total_cost_usd": 0.01, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:45:00Z"},
+    {"task": "A07", "server": "crystal", "arm": "ro", "rep": 1, "solved": true, "tokens": {"input": 900, "cache_creation": 0, "cache_read": 0, "output": 0}, "turns": 2, "tool_calls": [], "tool_errors": 0, "total_cost_usd": 0.02, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:50:00Z"},
+    {"task": "A07", "server": "crystal", "arm": "ro", "rep": 2, "solved": true, "tokens": {"input": 1100, "cache_creation": 0, "cache_read": 0, "output": 0}, "turns": 2, "tool_calls": [], "tool_errors": 0, "total_cost_usd": 0.02, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:55:00Z"},
+    {"task": "A14", "server": "dba", "arm": "w", "rep": 1, "solved": true, "tokens": {"input": 100, "cache_creation": 0, "cache_read": 0, "output": 0}, "turns": 2, "tool_calls": [{"name": "execute_sql", "args": {}, "is_error": true}], "tool_errors": 1, "total_cost_usd": 0.01, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T19:58:00Z"},
+    {"task": "A14", "server": "crystal", "arm": "w", "rep": 1, "solved": false, "db_changes": ["public.events content 5000000 -> 2321600"], "tokens": {"input": 100, "cache_creation": 0, "cache_read": 0, "output": 0}, "turns": 2, "tool_calls": [{"name": "execute_sql", "args": {}}], "tool_errors": 0, "total_cost_usd": 0.02, "model": "claude-sonnet-5-5", "started_at": "2026-11-20T20:00:00Z"}
+  ]
+}

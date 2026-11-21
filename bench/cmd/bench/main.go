@@ -47,6 +47,10 @@ commands:
                              against the maintainer and between the judges (no call)
   report [--fail-on-blocking]
                              write report.md from the latest run
+  report2 [--results-dir=<dir>] [--part-a=<id>] [--part-b=<id>] [--part-c=<id>] [--part-d=<id>]
+                             write report-v2.md from the protocol v2 results under --results-dir (default
+                             bench/results), run folders part-a to part-d by default; a missing part says "not run
+                             yet" (no database, server or model call)
   all                        up, load, n1, n2, security, ops, then report (never n3)
   tasks [--reps=<n>] [--arm=ro|w|all] [--only=A01,...] [--dry-run]
                              part A of PROTOCOL.md: the 15 agent tasks with claude -p on every --servers (default dba
@@ -106,6 +110,9 @@ type options struct {
 	sub         string           // calibration: export or import
 	agentSQL    string           // readonly: part A SQL to replay as legitimate statements
 	servers     []servers.Pinned // --servers, in the order given
+
+	resultsDir                 string // report2: the results root, default bench/results
+	partA, partB, partC, partD string // report2: the run folder of each part
 }
 
 // defaultServers are the servers of the levels written before protocol v2.
@@ -144,6 +151,11 @@ func parse(args []string, stderr io.Writer) (options, error) {
 	fs.StringVar(&o.input, "input", "", "")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "")
 	fs.StringVar(&o.agentSQL, "agent-sql", "", "")
+	fs.StringVar(&o.resultsDir, "results-dir", "", "")
+	fs.StringVar(&o.partA, "part-a", "part-a", "")
+	fs.StringVar(&o.partB, "part-b", "part-b", "")
+	fs.StringVar(&o.partC, "part-c", "part-c", "")
+	fs.StringVar(&o.partD, "part-d", "part-d", "")
 	list := fs.String("servers", "", "")
 	if err := fs.Parse(args[1:]); err != nil {
 		_, _ = fmt.Fprintf(stderr, "error: %v\n", err)
@@ -180,6 +192,7 @@ var commands = map[string]func(context.Context, *session) error{
 	"calibration": cmdCalibration2,
 	"ops":         cmdOps,
 	"report":      cmdReport,
+	"report2":     cmdReport2,
 	"tasks":       cmdTasks,
 	"receive":     cmdReceive,
 	"readonly":    cmdReadOnly,
