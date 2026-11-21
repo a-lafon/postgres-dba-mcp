@@ -1144,5 +1144,18 @@ func renderV2Costs(sb *strings.Builder, in V2) {
 		tbl(sb, []string{"Item", "Calls", "Cost", "Detail"}, rows)
 		fmt.Fprintf(sb, "Total recorded: %s.\n\n", usd(total))
 	}
-	sb.WriteString("receive.json, readonly.json and n2.json record no cost. With estimated tokens, parts B, C and D call no model.\n\n")
+	sb.WriteString("Part C calls no model. receive.json and n2.json record no cost: ")
+	var counted []string
+	if in.Receive != nil && in.Receive.Env.TokenCounter != results.CounterEstimate {
+		counted = append(counted, "B")
+	}
+	if in.N2 != nil && in.N2.Env.TokenCounter != results.CounterEstimate {
+		counted = append(counted, "D")
+	}
+	if len(counted) == 0 {
+		sb.WriteString("with estimated tokens, parts B and D call no model either.\n\n")
+		return
+	}
+	fmt.Fprintf(sb, "part %s counted its tokens through %s, whose cost the harness logs but does not store; "+
+		"[PROTOCOL.md §10](PROTOCOL.md#10-cost) gives it.\n\n", strings.Join(counted, " and part "), results.CounterClaude)
 }

@@ -313,8 +313,9 @@ runs each).
 | Part A | 15 × 5 × 2 = 150 | about 5.5 USD; measured with arm W below |
 | Arm W | 2 × 5 × 2 = 20 | about 0.7 USD; part A and arm W measured together: 5.16 USD on 2026-11-21 (postgres-dba-mcp 2.12, crystaldba 3.04) |
 | Judges | two calls per answer, 340 | 7.91 USD measured on 2026-11-21 (Opus 5.5 and Sonnet 5.5) |
-| Token counts of part B and of the tool definitions | 3 calls per text | about 5 USD on 2026-11-01 |
+| Token counts of part B and of the tool definitions | 3 calls per text | about 5 USD on 2026-11-01; measured on 2026-11-21: 87 calls, 2.83 USD (part B and the tool definitions) |
 | Part D with estimated tokens, parts B and C themselves | none | 0 |
+| Part D with counted tokens (`n2 --tokens=claude`) | 3 calls per distinct text | measured on 2026-11-21: 264 calls, 9.83 USD |
 
 Part A and arm W together: about 6 USD for 170 runs. The 2026-10-22 run, with Claude Opus 5.5, cost 5.35 USD for 27
 runs, about 0.20 USD per run. The runs go through a Claude Code subscription; the cost reported is the
