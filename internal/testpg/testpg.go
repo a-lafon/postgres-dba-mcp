@@ -21,10 +21,10 @@ const (
 	envAdmin   = "PGDBA_TEST_ADMIN"
 	envBouncer = "PGDBA_TEST_BOUNCER"
 
-	defaultRO      = "postgres://pgdba_ro:pgdba@localhost:55432/pgdba?sslmode=disable" //nolint:gosec // password of the local Docker fixture
-	defaultRW      = "postgres://pgdba_rw:pgdba@localhost:55432/pgdba?sslmode=disable" //nolint:gosec // password of the local Docker fixture
-	defaultAdmin   = "postgres://postgres:pgdba@localhost:55432/pgdba?sslmode=disable" //nolint:gosec // password of the local Docker fixture
-	defaultBouncer = "postgres://pgdba_ro:pgdba@localhost:56432/pgdba?sslmode=disable" //nolint:gosec // password of the local Docker fixture
+	defaultRO      = "postgres://pgdba_ro:pgdba@localhost:25432/pgdba?sslmode=disable" //nolint:gosec // password of the local Docker fixture
+	defaultRW      = "postgres://pgdba_rw:pgdba@localhost:25432/pgdba?sslmode=disable" //nolint:gosec // password of the local Docker fixture
+	defaultAdmin   = "postgres://postgres:pgdba@localhost:25432/pgdba?sslmode=disable" //nolint:gosec // password of the local Docker fixture
+	defaultBouncer = "postgres://pgdba_ro:pgdba@localhost:26432/pgdba?sslmode=disable" //nolint:gosec // password of the local Docker fixture
 )
 
 // RO returns the DSN of role pgdba_ro.

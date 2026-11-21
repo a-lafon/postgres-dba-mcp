@@ -1,5 +1,5 @@
 # Bench databases. `pg` holds the bench data set (port 55433); `fixture` is a copy of the test fixture used by the
-# security replay (port 55434). The repository's own fixture (port 55432) is never touched.
+# security replay (port 55434). The repository's own fixture (port 25432) is never touched.
 name: bench
 
 services:

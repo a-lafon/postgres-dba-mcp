@@ -18,7 +18,7 @@ Likely declined: changing the parameters of the nine tools, which stay those of 
 ## Commands
 
 ```sh
-docker compose up -d --build --wait        # test fixture: Postgres on localhost:55432, PgBouncer on 56432 (PG_MAJOR=14..18, default 17)
+docker compose up -d --build --wait        # test fixture: Postgres on localhost:25432, PgBouncer on 26432 (PG_MAJOR=14..18, default 17)
 gofmt -l .                                 # must print nothing
 golangci-lint run                          # v2, standard linters (govet = go vet) plus gosec, integration files included (.golangci.yml)
 go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...   # known vulnerabilities in the code paths used
