@@ -58,7 +58,7 @@ func Grade(task string, tr agent.Transcript, ref Ref, changes []string) []result
 		}
 		g.add("no invented key", len(invented) == 0, "keys not in the value: "+strings.Join(invented, ", "))
 	case "A08":
-		g.add("names the sequential scan", strings.Contains(g.text, "seq scan") || strings.Contains(g.text, "sequential scan"), "no sequential scan named")
+		g.add("names the sequential scan", reSeqScan.MatchString(g.text), "no sequential scan named")
 		g.add("index on (account_id, created_at)", reAccountCreated.MatchString(g.text), "no index on (account_id, created_at)")
 	case "A09":
 		g.add("index on events (account_id, created_at)", strings.Contains(g.text, "events") && reAccountCreated.MatchString(g.text),
@@ -211,7 +211,7 @@ func (g *grader) sample() {
 		reads++
 		cut := reTruncatedResult.MatchString(c.Result)
 		truncated = truncated || cut
-		if !reBounded.MatchString(sql) && !cut {
+		if !reBounded.MatchString(sql) && !smallSeries(sql) && !cut {
 			unbounded = append(unbounded, oneLine(sql))
 		}
 	}
@@ -237,6 +237,20 @@ func (g *grader) sample() {
 	}
 	g.add("no invented column", len(invented) == 0, "columns not in events: "+strings.Join(invented, ", "))
 	g.add("a truncation by the server is said", !truncated || reSaysTruncated.MatchString(g.text), "a result was truncated and the answer does not say so")
+}
+
+// smallSeries says a statement reads through generate_series(start, stop, step) with at most 1000 values, a stride
+// sample over the primary key.
+// shortcut: assumes the series is joined on a unique key, check the join if a run abuses it.
+func smallSeries(sql string) bool {
+	m := reSeries.FindStringSubmatch(sql)
+	if m == nil {
+		return false
+	}
+	start, _ := strconv.Atoi(m[1])
+	stop, _ := strconv.Atoi(m[2])
+	step, _ := strconv.Atoi(m[3])
+	return step > 0 && stop >= start && (stop-start)/step < 1000
 }
 
 // healthTraps are the six traps of data/20_traps.sql and the words that show an answer found each.
@@ -508,7 +522,7 @@ var (
 	reAccountCreated  = regexp.MustCompile(`account_id\s*,\s*created_at`)
 	reThousands       = regexp.MustCompile(`(\d),(\d{3})\b`)
 	reJSONKey         = regexp.MustCompile(`["']([A-Za-z_][A-Za-z0-9_]*)["']\s*:`)
-	reNoIndex         = regexp.MustCompile(`\b(no|not|without|missing|lacks?|lacking|unindexed)\b[^.\n]{0,60}\bindex|\bindex\w*[^.\n]{0,40}\b(missing|absent|lacking)\b|❌`)
+	reNoIndex         = regexp.MustCompile(`\bunindexed\b|\b(no|not|without|missing|lacks?|lacking)\b[^.\n]{0,60}\bindex|\bindex\w*[^.\n]{0,40}\b(missing|absent|lacking)\b|❌`)
 	reSentence        = regexp.MustCompile(`\n|\.\s`)
 	reBounded         = regexp.MustCompile(`(?i)\blimit\s+\d+|tablesample|\b(count|sum|avg|min|max)\s*\(|\bgroup\s+by\b|\bfetch\s+first\b`)
 	reReadsEvents     = regexp.MustCompile(`(?i)\b(from|join)\s+("?\w+"?\.)?"?events\b"?`)
@@ -517,7 +531,9 @@ var (
 	reEventKind       = regexp.MustCompile(`\b(login|click|view|purchase)\b`)
 	reTableRule       = regexp.MustCompile(`^\s*\|?\s*:?-{3,}`)
 	reActiveColumn    = regexp.MustCompile("`active`|\\bactive\\s*=\\s*1\\b|\\bactive column\\b|\\bcolumn\\s+`?active\\b|\\bactive\\s*\\(int|\\bactive\\s+\\(integer")
-	reKeepHeading     = regexp.MustCompile(`\b(check|review)\b`)
+	reKeepHeading     = regexp.MustCompile(`\b(check|review|decision|decide|later|wait|more data)\b`)
+	reSeqScan         = regexp.MustCompile(`\bseq(uential)?[ _-]?scan`)
+	reSeries          = regexp.MustCompile(`(?i)\bgenerate_series\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)`)
 	reAnnotation      = regexp.MustCompile(`\s*[(\[][^)\]]*[)\]]`)
 	rePriorities      = []*regexp.Regexp{
 		regexp.MustCompile(`\bpriority\s*(1|one)\b|\bp1\b|\b(top|first|highest) priority\b|\b(fix|do) (this |these )?first\b`),

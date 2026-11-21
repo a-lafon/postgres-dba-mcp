@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/judge"
 	"github.com/a-lafon/postgres-dba-mcp/bench/internal/results"
+	"github.com/a-lafon/postgres-dba-mcp/bench/internal/tasks"
 )
 
 // judgeInput reads the judge input of the run: --input, or judge-input.json in the run folder.
@@ -27,11 +29,35 @@ func (s *session) judgeInput() (string, []judge.Item, error) {
 		file = filepath.Join(dir, "judge-input.json")
 	}
 	b, err := os.ReadFile(file)
+	if errors.Is(err, fs.ErrNotExist) && s.opts.input == "" {
+		b, err = writePartAInput(dir, file)
+	}
 	if err != nil {
 		return "", nil, fmt.Errorf("read judge input: %w", err)
 	}
 	items, err := judge.ReadItems(b)
 	return dir, items, err
+}
+
+// writePartAInput adapts the part-A records of the run folder to the judge input and writes it to file, so that
+// judge2 and calibration read the same answers.
+func writePartAInput(dir, file string) ([]byte, error) {
+	runs, err := results.LoadTaskRuns(dir)
+	if err != nil {
+		return nil, err
+	}
+	if len(runs) == 0 {
+		return nil, fmt.Errorf("%s: %w, and no part A run in %s", file, fs.ErrNotExist, dir)
+	}
+	questions := map[string]string{}
+	for _, t := range tasks.All {
+		questions[t.ID] = t.Question
+	}
+	b, err := json.MarshalIndent(judge.ItemsFromTaskRuns(runs, questions), "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return b, os.WriteFile(file, b, 0o644)
 }
 
 // cmdJudge2 grades every answer of the judge input with both judges of protocol v2 and writes judge2.json. Replies

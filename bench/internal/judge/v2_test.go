@@ -2,6 +2,7 @@ package judge
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -178,5 +179,28 @@ func TestReadItems(t *testing.T) {
 		if _, err := ReadItems([]byte(bad)); err == nil {
 			t.Errorf("accepted %s", bad)
 		}
+	}
+}
+
+func TestItemsFromTaskRuns(t *testing.T) {
+	facts := []results.Fact{{Text: "966 have active = 1."}, {Text: "There is a single count.", Wrong: true}, {Text: "987 have activebool."}}
+	runs := []results.TaskRun{
+		{Task: "A04", Server: "dba", Arm: results.ArmRO, Rep: 1, Solved: true, Final: "966 and 987", Facts: facts},
+		{Task: "A04", Server: "dba", Arm: results.ArmW, Rep: 1, Final: "987", Facts: facts},
+	}
+	items := ItemsFromTaskRuns(runs, map[string]string{"A04": "How many active customers?"})
+	b, err := json.Marshal(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadItems(b); err != nil {
+		t.Fatalf("the items do not pass ReadItems: %v", err)
+	}
+	it := items[0]
+	if it.Question != "How many active customers?" || !it.Solved || it.Answer != "966 and 987" || items[1].Task != "A04-w" {
+		t.Errorf("items = %+v", items)
+	}
+	if len(it.Facts) != 2 || it.Facts[1].ID != "F2" || it.Facts[1].Statement != "987 have activebool." || len(it.Wrong) != 1 {
+		t.Errorf("facts = %+v, wrong = %v", it.Facts, it.Wrong)
 	}
 }

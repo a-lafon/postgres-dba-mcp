@@ -373,3 +373,17 @@ is listed here with its date and reason, and in the report.
   showed a tie on the solved rate across the five servers, with the differences in tokens and in parts B and C. Part D
   (the `n2` level, S01 to S21) is added to compare the two tool by tool, now on the release image of postgres-dba-mcp
   instead of a build of the repository. DBHub, Toolbox and the reference server stay in parts B and C.
+- **2026-11-21, before the freeze: four rubric fixes after the full run of part A.** The full run (170 runs) failed 7
+  answers; read one by one, none was wrong. The rubrics were fixed and the stored runs regraded (`tasks --regrade`),
+  with no run repeated:
+  - A05: an answer that calls the key "unindexed" (`**Unindexed:** rental.customer_id`) now says it has no index.
+  - A06: a read through `generate_series(start, stop, step)` of at most 1,000 values, joined on the primary key, is
+    bounded.
+  - A08: "seq-scan" and "seq_scan" name the sequential scan.
+  - A12: a section whose heading defers the decision ("Needs a decision or more data", "Don't decide yet") proposes
+    nothing, like one that says to check or review.
+
+  The answers are rubric test fixtures, with near misses that must still fail (a series of 5,000,000 values). After the
+  regrade, both servers solve 85 of 85.
+- **2026-11-21, before the freeze: judge input.** `judge2` builds `judge-input.json` from the part-A records when the
+  file is missing. An arm-W run is the task `<task>-w`.

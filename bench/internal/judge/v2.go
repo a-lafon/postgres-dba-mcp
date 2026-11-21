@@ -51,6 +51,27 @@ type Item struct {
 	Wrong    []string `json:"wrong"` // claims that would be wrong
 }
 
+// ItemsFromTaskRuns adapts part-A records to judge items. questions maps a task to its question. An arm-W run is the
+// task "<task>-w", so that it does not collide with the arm-RO run of the same repetition.
+func ItemsFromTaskRuns(runs []results.TaskRun, questions map[string]string) []Item {
+	items := make([]Item, 0, len(runs))
+	for _, r := range runs {
+		it := Item{Task: r.Task, Server: r.Server, Run: r.Rep, Solved: r.Solved, Question: questions[r.Task], Answer: r.Final}
+		if r.Arm != results.ArmRO {
+			it.Task += "-" + r.Arm
+		}
+		for _, f := range r.Facts {
+			if f.Wrong {
+				it.Wrong = append(it.Wrong, f.Text)
+				continue
+			}
+			it.Facts = append(it.Facts, Fact{ID: fmt.Sprintf("F%d", len(it.Facts)+1), Statement: f.Text})
+		}
+		items = append(items, it)
+	}
+	return items
+}
+
 // ReadItems decodes a JSON array of items and checks that each can be graded.
 func ReadItems(b []byte) ([]Item, error) {
 	var items []Item
