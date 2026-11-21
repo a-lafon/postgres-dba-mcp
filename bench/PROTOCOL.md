@@ -246,6 +246,20 @@ crystaldba's tool set, so no mapping is needed, unlike the generic servers of pa
   - The maintainer grades 40 answers blind, drawn at random within each task and server, on the same grid.
   - The report gives Cohen's kappa between the maintainer and the judge.
   - Below 0.6, the judge's measures are not published, and the report says so.
+- **Calibration of 2026-11-21**, on the answers of the full run of part A (not the pilot's): 40 answers, 157 fact
+  labels and 40 doubt labels filled by the maintainer.
+
+  | Judge | Fact kappa | Doubt kappa | Facts in agreement with the maintainer |
+  |---|---|---|---|
+  | Claude Opus 5.5 | 0.93 | 0.84 | 156 of 157 |
+  | Claude Sonnet 5.5 | 0.63 | 0.85 | 152 of 157 |
+
+  Both judges pass 0.6, so both are published. Their kappa between each other, on all 170 answers, is 0.77. Four of
+  Sonnet's five disagreements are on A09, where it marks as present indexes that the maintainer and Opus mark absent;
+  the consensus rule (a fact counts only when both judges agree) reports those facts as disputed.
+  **Limit**: the maintainer marked 149 facts present, 8 absent and none contradicted. The calibration therefore checks
+  present against absent, not the judges' detection of a contradiction, and Sonnet's kappa rests on 5 disagreements.
+  The report says so next to every "facts wrong" figure.
 - The judge's prompt ([internal/judge](internal/judge)) is frozen with the protocol.
 
 ## 8. Statistics
@@ -296,9 +310,9 @@ runs each).
 
 | Item | Runs | At 0.037 USD a run |
 |---|---|---|
-| Part A | 15 × 5 × 2 = 150 | about 5.5 USD |
-| Arm W | 2 × 5 × 2 = 20 | about 0.7 USD |
-| Judges | two calls per answer, 340 | not measured yet |
+| Part A | 15 × 5 × 2 = 150 | about 5.5 USD; measured with arm W below |
+| Arm W | 2 × 5 × 2 = 20 | about 0.7 USD; part A and arm W measured together: 5.16 USD on 2026-11-21 (postgres-dba-mcp 2.12, crystaldba 3.04) |
+| Judges | two calls per answer, 340 | 7.91 USD measured on 2026-11-21 (Opus 5.5 and Sonnet 5.5) |
 | Token counts of part B and of the tool definitions | 3 calls per text | about 5 USD on 2026-11-01 |
 | Part D with estimated tokens, parts B and C themselves | none | 0 |
 
@@ -320,9 +334,11 @@ runs, about 0.20 USD per run. The runs go through a Claude Code subscription; th
 4. Measure part D (`n2`) on the release of postgres-dba-mcp that part A uses. Checked on 2026-11-20 with estimated
    tokens: it runs, on the v0.3.3 image.
 5. Send the configurations to the maintainers (14 days). Meanwhile, the maintainer grades the calibration sheet on the
-   pilot answers.
+   pilot answers. **Not done yet.** The calibration was graded on the answers of the full run instead (§7).
 6. Tag `bench-protocol-v2`, then do the full run: `go run ./cmd/bench tasks` (170 runs, then `judge2`), `n2`,
-   `receive`, `readonly`.
+   `receive`, `readonly`. **Deviation**: the full run of part A, `judge2` and the calibration were done on
+   2026-11-20 and 2026-11-21, before the tag, and four rubrics were fixed after that run (changelog). The tag will
+   freeze the protocol as it stands then; the report lists every change made after the full run.
 7. Write the report and publish the raw data.
 
 ## 12. Decisions
@@ -387,3 +403,7 @@ is listed here with its date and reason, and in the report.
   regrade, both servers solve 85 of 85.
 - **2026-11-21, before the freeze: judge input.** `judge2` builds `judge-input.json` from the part-A records when the
   file is missing. An arm-W run is the task `<task>-w`.
+- **2026-11-21, before the freeze: full run before the tag, and calibration on its answers.** The full run of part A
+  (170 runs), the judge and the calibration ran before the tag, in place of the order of §11, and the four rubric fixes
+  above came after that run. The calibration sheet was drawn from the full run's answers rather than the pilot's, and
+  kept at 40 answers: the maintainer filled all of it. Results in §7; costs in §10.
