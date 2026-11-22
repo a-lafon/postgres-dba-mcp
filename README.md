@@ -11,15 +11,15 @@
 
 Let Claude Code, Codex or any MCP client explore a PostgreSQL database, run SQL, read query plans, test hypothetical indexes, find the slowest queries and check the database's health, without flooding the model's context or escaping read-only mode.
 
-A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It is a drop-in replacement for [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0, with the same nine tools and parameters plus `analyze_locks`; switching is one line of client configuration, and [MIGRATION.md](MIGRATION.md) lists what changes.
+A Model Context Protocol server that gives an AI client compact, bounded access to one PostgreSQL database. It is a drop-in replacement for [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0, with crystaldba's nine tools and parameters unchanged, plus a tenth, `analyze_locks`; switching is one line of client configuration, and [MIGRATION.md](MIGRATION.md) lists what changes.
 
-## Why
+## Why a bounded, read-only Postgres MCP server
 
 - **Bounded, announced results.** Compact CSV with an explicit footer. Every result is capped in rows, bytes and cell length, and every cut is announced.
 - **A restricted mode, on by default.** Each statement is parsed with PostgreSQL's own parser (libpg_query), every function it names is checked wherever it stands, and it runs inside a read-only transaction.
 - **One static Go binary** that starts in milliseconds.
 
-## Measured
+## Measured against crystaldba/postgres-mcp 0.3.0
 
 On a PostgreSQL 17 database, as a read-only role, on 2026-11-01:
 
@@ -343,9 +343,12 @@ docker run --rm -p 127.0.0.1:8000:8000 \
 
 On Linux, replace `host.docker.internal` by the address of the host on the bridge network, or run with `--network=host`. The `Host` header the client sends contains the host port, so the published host port must equal `--port` (`-p 8000:8000`). With a different mapping, such as `-p 9000:8000`, add `--allowed-hosts=localhost:9000`.
 
-## Migration and security policy
+## Coming from crystaldba/postgres-mcp 0.3.0
 
-- Coming from crystaldba/postgres-mcp 0.3.0: [MIGRATION.md](MIGRATION.md) lists every difference you can observe.
+[MIGRATION.md](MIGRATION.md) lists every difference you can observe.
+
+## Security policy and contributing
+
 - Reporting a vulnerability: [SECURITY.md](SECURITY.md).
 - Working on the code: [CONTRIBUTING.md](CONTRIBUTING.md).
 - Maintained by one person on a best-effort basis; issues and pull requests are welcome.
