@@ -22,7 +22,11 @@ type Case struct {
 	SQL      string
 }
 
-const caseMarker = "-- case: "
+const (
+	caseMarker = "-- case: "
+	// sourceMarker documents where a case comes from. It is not part of the statement.
+	sourceMarker = "-- source:"
+)
 
 // ParseCorpus reads a corpus: `-- case: <id> <category>` lines, each followed by the SQL of the case.
 func ParseCorpus(text string) ([]Case, error) {
@@ -44,6 +48,9 @@ func ParseCorpus(text string) ([]Case, error) {
 				return nil, fmt.Errorf("corpus line %q: want `-- case: <id> <category>`", line)
 			}
 			cur = &Case{ID: f[0], Category: f[1]}
+			continue
+		}
+		if strings.HasPrefix(line, sourceMarker) {
 			continue
 		}
 		sql = append(sql, line)

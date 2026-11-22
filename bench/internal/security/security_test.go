@@ -56,6 +56,17 @@ func TestParseCorpus(t *testing.T) {
 	}
 }
 
+func TestParseCorpusDropsTheSourceLine(t *testing.T) {
+	cases, err := ParseCorpus("-- case: a write\n-- source: https://example.com/advisory\nDELETE FROM t;\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Case{{"a", "write", "DELETE FROM t;"}}
+	if !reflect.DeepEqual(cases, want) {
+		t.Errorf("cases = %+v, want %+v", cases, want)
+	}
+}
+
 func TestRealCorpora(t *testing.T) {
 	tests := []struct {
 		file string
