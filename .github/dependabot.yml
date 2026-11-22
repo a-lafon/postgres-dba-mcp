@@ -1,13 +1,9 @@
-# Weekly updates of the Go modules of the server and of the bench harness, and of the pinned actions.
+# Weekly updates of the Go module of the server and of the pinned actions. The bench harness is not
+# tracked: it is a development tool, it ships nothing, and a stale module there reaches no user.
 version: 2
 updates:
   - package-ecosystem: gomod
     directory: /
-    schedule:
-      interval: weekly
-
-  - package-ecosystem: gomod
-    directory: /bench
     schedule:
       interval: weekly
 
