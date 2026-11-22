@@ -35,6 +35,9 @@ func parseCorpus(text string, families map[string]bool) ([]corpusCase, error) {
 		}
 	}
 	for i, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(line, "-- source:") { // where the case comes from, not part of the statement
+			continue
+		}
 		rest, ok := strings.CutPrefix(line, "-- case:")
 		if !ok {
 			if cur != nil {
@@ -84,6 +87,8 @@ func TestParseCorpus(t *testing.T) {
 	}{
 		{"two cases", "-- case: a legit\nSELECT 1;\n\n-- case: b legit\nSELECT 2;\n--x\n",
 			[]corpusCase{{"a", "legit", "SELECT 1;"}, {"b", "legit", "SELECT 2;\n--x"}}, ""},
+		{"source line dropped, other comments kept", "-- case: a legit\n-- source: https://example.com/a\nSELECT 1;\n--x\n",
+			[]corpusCase{{"a", "legit", "SELECT 1;\n--x"}}, ""},
 		{"unknown family", "-- case: a bogus\nSELECT 1;", nil, `unknown family "bogus"`},
 		{"missing family", "-- case: a\nSELECT 1;", nil, "want"},
 		{"duplicate id", "-- case: a legit\nx\n-- case: a legit\ny", nil, "duplicate"},

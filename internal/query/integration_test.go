@@ -575,6 +575,8 @@ func loadCorpus(t *testing.T, name string) []corpusCase {
 				t.Fatalf("%s: bad case header %q", name, line)
 			}
 			cases = append(cases, corpusCase{ID: f[0], Family: f[1]})
+		} else if strings.HasPrefix(line, "-- source:") { // where the case comes from, not part of the statement
+			continue
 		} else if len(cases) > 0 {
 			cases[len(cases)-1].SQL += line + "\n"
 		}
