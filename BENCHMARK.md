@@ -1,6 +1,6 @@
 # Benchmark
 
-postgres-dba-mcp against [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0, the latest release (May 2025). Tool responses, restricted mode, operations and tool definitions were measured on 2026-11-01 on [`959bb72`](https://github.com/a-lafon/postgres-dba-mcp/commit/959bb72); the agent tasks and the judge are older and say so where they appear. This page gives the method and every number the harness produced, including the ones that do not favour postgres-dba-mcp. The harness is published in [bench](bench), with its inputs: the data set in [bench/data](bench/data), the 131 attacks and 47 legitimate statements in [testdata/safesql](testdata/safesql), and the scenarios and tasks in the tables below. `cd bench && go run ./cmd/bench all --tokens=claude` reproduces everything but the agent tasks, and writes [bench/report.md](bench/report.md), which is the run behind this page as the harness wrote it.
+postgres-dba-mcp against [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) 0.3.0, the latest release (May 2025). Tool responses, restricted mode, operations and tool definitions were measured on 2026-11-01 on [`959bb72`](https://github.com/a-lafon/postgres-dba-mcp/commit/959bb72); the agent tasks and the judge are older and say so where they appear. This page gives the method and every number the harness produced, including the ones that do not favour postgres-dba-mcp. The harness is published in [bench](bench), with its inputs: the data set in [bench/data](bench/data), the 135 attacks and 47 legitimate statements in [testdata/safesql](testdata/safesql), and the scenarios and tasks in the tables below. `cd bench && go run ./cmd/bench all --tokens=claude` reproduces everything but the agent tasks, and writes [bench/report.md](bench/report.md), which is the run behind this page as the harness wrote it.
 
 ## At a glance
 
@@ -69,16 +69,16 @@ The `traps` schema holds six problems a health check should find:
 - a join of `accounts` and `orders`;
 - a `jsonb` field read.
 
-**Attack corpus** (131 statements in 8 families):
+**Attack corpus** (135 statements in 8 families):
 
 | Family | Statements | Examples |
 |---|---|---|
 | functions with side effects | 45 | the same function in `FROM`, `LATERAL`, a subquery, a CTE and an argument |
-| evasions | 24 | mixed case, quoted names, `EXPLAIN ANALYZE` of a write, `PREPARE`, `DO`, `LISTEN`, empty or broken statements |
-| transaction and session control | 15 | `COMMIT`, `SET ROLE`, `SET default_transaction_read_only`, `RESET ALL` |
+| evasions | 26 | mixed case, quoted names, `EXPLAIN ANALYZE` and `EXPLAIN ANALYSE` of a write, `PREPARE`, `DO`, `LISTEN`, empty or broken statements |
+| transaction and session control | 16 | `COMMIT`, `END`, `SET ROLE`, `SET default_transaction_read_only`, `RESET ALL` |
 | plain writes | 13 | `INSERT`, `UPDATE`, `DELETE`, DDL, `GRANT`, `VACUUM`, `MERGE` |
 | disguised writes | 10 | data-modifying `WITH`, `SELECT INTO` |
-| several statements | 8 | a write hidden after `;`, in comments or dollar quotes |
+| several statements | 9 | a write hidden after `;`, in comments, dollar quotes or an E-string |
 | files | 8 | `COPY` to and from files and programs, `CREATE EXTENSION` |
 | row and table locks | 8 | `FOR UPDATE`, `LOCK TABLE` |
 
@@ -130,8 +130,8 @@ Every statement is sent to `execute_sql` in restricted mode. An attack counts as
 | postgres-dba-mcp | **131** | 0 | 0 | 0 |
 | crystaldba 0.3.0 | 106 | 15 | 10 | 1 |
 
-- **Both rows cover the 131 cases.** The run of 2026-10-22 was missing the last 7 (`ts_rewrite`, which runs the SQL text it is given, then index maintenance and planner statistics writes), so crystaldba's row then read 102 / 12 / 10 / 1 over the first 124. The 7 new cases change where its failures fall, not what it lets through.
-- **This is the one measure the repository checks on every push.** `TestCorpora` sends the 131 statements through the SQL check and `TestAttackCorpusLeavesNoSideEffect` sends them through the server itself, on PostgreSQL 14 to 18, as a read-only role and as a superuser, comparing a snapshot of the database after each one. The bench adds the crystaldba column, not the postgres-dba-mcp one.
+- **Both rows cover the 131 cases of that day.** The corpus has since grown to 135; the four new cases are not in this table and will enter it at the next run. The run of 2026-10-22 was missing the last 7 (`ts_rewrite`, which runs the SQL text it is given, then index maintenance and planner statistics writes), so crystaldba's row then read 102 / 12 / 10 / 1 over the first 124. The 7 new cases change where its failures fall, not what it lets through.
+- **This is the one measure the repository checks on every push.** `TestCorpora` sends every statement of the corpus through the SQL check and `TestAttackCorpusLeavesNoSideEffect` sends them through the server itself, on PostgreSQL 14 to 18, as a read-only role and as a superuser, comparing a snapshot of the database after each one. The bench adds the crystaldba column, not the postgres-dba-mcp one.
 - **crystaldba executions.** Its 10 executed cases are:
   - functions called in `FROM` or `LATERAL`: `set_config` (twice), `pg_advisory_lock`, `pg_notify`, `pg_terminate_backend` ([CVE-2026-85620](https://github.com/advisories/GHSA-cm87-gp55-7cgj));
   - `PREPARE`, `DEALLOCATE` and `DECLARE CURSOR`;

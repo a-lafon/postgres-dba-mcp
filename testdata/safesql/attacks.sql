@@ -86,6 +86,10 @@ SELECT $$ ; $$; DELETE FROM public.events;
 -- case: multi-dollar-tag multi
 SELECT $a$ $$ ; $a$; DELETE FROM public.events;
 
+-- case: multi-estring multi
+-- source: https://github.com/bytebase/dbhub/issues/504
+SELECT E'\' , '; COMMIT; DROP TABLE public.orders; SELECT '';
+
 -- case: multi-commit-first multi
 BEGIN; SELECT 1; COMMIT;
 
@@ -121,6 +125,10 @@ COMMIT;
 
 -- case: txn-rollback txn
 ROLLBACK;
+
+-- case: txn-end txn
+-- source: https://www.postgresql.org/docs/17/sql-end.html
+END;
 
 -- case: txn-begin txn
 BEGIN;
@@ -346,6 +354,14 @@ EXPLAIN ANALYZE DELETE FROM public.events;
 
 -- case: evasion-explain-paren-update evasion
 EXPLAIN (ANALYZE, BUFFERS) UPDATE public.accounts SET name = 'x';
+
+-- case: evasion-explain-analyse-delete evasion
+-- source: https://github.com/bytebase/dbhub/issues/501
+EXPLAIN ANALYSE DELETE FROM public.orders WHERE id = 6;
+
+-- case: evasion-estring-fn evasion
+-- source: https://github.com/bytebase/dbhub/issues/504
+SELECT E'\' , ', pg_advisory_lock(4305);
 
 -- case: evasion-explain-insert evasion
 EXPLAIN INSERT INTO public.accounts (id, name) VALUES (999999, 'x');
