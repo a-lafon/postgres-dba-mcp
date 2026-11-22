@@ -21,15 +21,12 @@ A Model Context Protocol server that gives an AI client compact, bounded access 
 
 ## Measured
 
-Against crystaldba/postgres-mcp 0.3.0 on the same PostgreSQL 17 database and read-only role, on [`959bb72`](https://github.com/a-lafon/postgres-dba-mcp/commit/959bb72):
+On a PostgreSQL 17 database, as a read-only role, on [`959bb72`](https://github.com/a-lafon/postgres-dba-mcp/commit/959bb72) (2026-11-01):
 
-- **61 % fewer** tokens than 0.3.0 per `execute_sql` response, median of the 4 scenarios both servers answered (2026-11-01);
-- **131 of 131** attack statements refused in restricted mode, where 0.3.0 executes 10 (2026-11-01);
-- **9 MB** of memory against 246 MB for 0.3.0, both in a Linux container (2026-11-01).
+- **131 of 131** attack statements refused in restricted mode;
+- **9 MB** of memory in a Linux container.
 
-The other side: the tool definitions are 39 % larger, 2732 tokens for ten tools against 1962 for nine (2026-11-01).
-
-Method and every number, including where postgres-dba-mcp does worse: [BENCHMARK.md](BENCHMARK.md). To run the harness: [bench/README.md](bench/README.md).
+Method, every number including where postgres-dba-mcp does worse, and the comparison with crystaldba/postgres-mcp 0.3.0: [BENCHMARK.md](BENCHMARK.md). To run the harness: [bench/README.md](bench/README.md).
 
 ## What the model receives
 
