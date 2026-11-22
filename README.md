@@ -21,7 +21,7 @@ A Model Context Protocol server that gives an AI client compact, bounded access 
 
 ## Measured
 
-On a PostgreSQL 17 database, as a read-only role, on [`959bb72`](https://github.com/a-lafon/postgres-dba-mcp/commit/959bb72) (2026-11-01):
+On a PostgreSQL 17 database, as a read-only role, on 2026-11-01:
 
 - **131 of 131** attack statements refused in restricted mode;
 - **9 MB** of memory in a Linux container.
