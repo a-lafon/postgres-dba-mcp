@@ -43,6 +43,14 @@ Values keep their PostgreSQL text form, `NULL` (`\N`) stays distinct from an emp
 
 ## Install
 
+With npm (Node.js 18 or later; macOS, Linux and Windows on amd64, macOS and Linux also on arm64), there is nothing to install: `npx` downloads the binary of your platform and runs it.
+
+```sh
+npx -y postgres-dba-mcp --version
+```
+
+In the quick starts below, use `npx -y postgres-dba-mcp` wherever the command is `postgres-dba-mcp`.
+
 With Homebrew (macOS and Linux):
 
 ```sh
@@ -54,8 +62,6 @@ With the install script (macOS and Linux, amd64 and arm64): it downloads the rel
 ```sh
 curl -fsSL https://raw.githubusercontent.com/a-lafon/postgres-dba-mcp/main/install.sh | sh
 ```
-
-With npm (Node.js 18 or later; macOS, Linux and Windows on amd64, macOS and Linux also on arm64): `npx -y postgres-dba-mcp` runs the server without installing it, and can be the command of an MCP client configuration. npm downloads the binary of your platform only.
 
 With Docker (linux/amd64 and linux/arm64, non-root, no shell):
 
@@ -79,6 +85,12 @@ Register the server with the database URI in its environment:
 
 ```sh
 claude mcp add pg --env DATABASE_URI=postgres://pgdba_ro:secret@localhost:5432/pgdba -- postgres-dba-mcp
+```
+
+Without an install, through npm:
+
+```sh
+claude mcp add pg --env DATABASE_URI=postgres://pgdba_ro:secret@localhost:5432/pgdba -- npx -y postgres-dba-mcp
 ```
 
 Or put it in `.mcp.json`:
