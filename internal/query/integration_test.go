@@ -628,6 +628,20 @@ func TestAttackCorpusLeavesNoSideEffect(t *testing.T) {
 	}
 }
 
+// With standard_conforming_strings off, the server reads \' as an escaped quote in a plain string and the
+// parser does not, so a call the parser took for string content would run.
+func TestBackslashQuoteHidesNoCall(t *testing.T) {
+	name := testpg.TempDB(t)
+	admin := adminConn(t)
+	if _, err := admin.Exec(context.Background(), "ALTER DATABASE "+pgx.Identifier{name}.Sanitize()+" SET standard_conforming_strings = off"); err != nil {
+		t.Fatal(err)
+	}
+	c := newClient(t, testpg.DSN(testpg.RO(t), name))
+	if text, _ := c.exec(t, `SELECT '\' , ', pg_advisory_lock(4242) --'`); !strings.HasPrefix(text, "?column?,?column?\n") {
+		t.Errorf("the server ran a call the parser read as a string: %q", text)
+	}
+}
+
 func TestLegitCorpusIsNotRefused(t *testing.T) {
 	c := newClient(t, testpg.RO(t))
 	for _, tc := range loadCorpus(t, "legit.sql") {
