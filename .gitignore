@@ -1,6 +1,9 @@
 bench/bin/
 # Recorded runs: megabytes of transcripts carrying the cwd, session identifiers and the slash commands of whoever ran them.
 bench/results/
+# The protocol v2 report names other projects' servers, and PROTOCOL.md 11.5 promises their maintainers
+# 14 days to object before results about them are published. Run report2 to write it locally.
+bench/report-v2.md
 dist/
 .env
 .claude/
