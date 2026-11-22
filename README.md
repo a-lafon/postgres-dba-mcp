@@ -1,11 +1,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo/logo-lockup-dark.svg">
-    <img alt="postgres-dba-mcp" src="assets/logo/logo-lockup-light.svg" height="72">
+    <img alt="postgres-dba-mcp" src="assets/logo/logo-lockup-light.svg" height="96">
   </picture>
 </p>
 
-<h1 align="center">Bounded, read-only PostgreSQL MCP server for AI assistants</h1>
+<h1 align="center">Bounded, read-only Postgres MCP server</h1>
 
 <p align="center"><img alt="Three Claude Code questions on the Pagila sample database: execute_sql returns the top films by revenue as compact CSV with a row-count footer, analyze_db_health finds duplicate indexes on the payment partitions, and explain_query with a hypothetical index shows the estimated cost of a query dropping from 310 to 34" src="assets/demo.gif" width="860"></p>
 
