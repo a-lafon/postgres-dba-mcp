@@ -32,14 +32,16 @@ const (
 )
 
 // settingsSQL sets the session values for the current transaction only, so they hold behind any pooler.
-// $1 is the statement timeout in milliseconds.
+// $1 is the statement timeout in milliseconds. standard_conforming_strings is forced on because the parser
+// assumes it: off, the server reads \' as an escaped quote and the two disagree on where a string ends.
 const settingsSQL = `SELECT set_config('statement_timeout', $1, true),
   set_config('lock_timeout', '10s', true),
   set_config('idle_in_transaction_session_timeout', '60s', true),
   set_config('TimeZone', 'UTC', true),
   set_config('DateStyle', 'ISO, YMD', true),
   set_config('IntervalStyle', 'postgres', true),
-  set_config('bytea_output', 'hex', true)`
+  set_config('bytea_output', 'hex', true),
+  set_config('standard_conforming_strings', 'on', true)`
 
 // searchPathSQL extends settingsSQL when the connection URI carried a search_path.
 // $2 is that value; it is set per transaction, because PgBouncer before 1.21 refuses
