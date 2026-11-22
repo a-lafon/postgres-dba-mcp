@@ -55,6 +55,8 @@ With the install script (macOS and Linux, amd64 and arm64): it downloads the rel
 curl -fsSL https://raw.githubusercontent.com/a-lafon/postgres-dba-mcp/main/install.sh | sh
 ```
 
+With npm (Node.js 18 or later; macOS, Linux and Windows on amd64, macOS and Linux also on arm64): `npx -y postgres-dba-mcp` runs the server without installing it, and can be the command of an MCP client configuration. npm downloads the binary of your platform only.
+
 With Docker (linux/amd64 and linux/arm64, non-root, no shell):
 
 ```sh
