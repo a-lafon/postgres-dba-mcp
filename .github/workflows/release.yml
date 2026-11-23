@@ -10,7 +10,7 @@ on:
 permissions:
   contents: write # create the GitHub release and upload the archives
   packages: write # push the image to GHCR
-  id-token: write # OIDC token the MCP Registry trades for a publish token
+  id-token: write # OIDC token the MCP Registry and npm trade for a publish token
 
 jobs:
   release:
@@ -85,14 +85,15 @@ jobs:
           tar xzf mcp-publisher.tar.gz mcp-publisher
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
-      # Last: a missing or expired token then fails the job with everything else already published.
+      # Trusted publishing (OIDC, no token) needs npm 11.5.1 or later, which the runner's Node may not ship.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      # Last: a trusted publisher missing on npm then fails the job with everything else already published.
       - name: Publish to npm
         run: |
-          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
           scripts/npm-pack.sh dist/npm
           # The platform packages first: the launcher depends on them.
           for dir in dist/npm/postgres-dba-mcp-* dist/npm/postgres-dba-mcp; do
             npm publish "./$dir" --access public --provenance
           done
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
