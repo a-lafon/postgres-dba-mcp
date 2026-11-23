@@ -59,6 +59,13 @@ jobs:
           image=$(docker image ls --format '{{.Repository}}:{{.Tag}}' ghcr.io/a-lafon/postgres-dba-mcp | grep -- '-amd64$' | head -n 1)
           test -n "$image"
           scripts/smoke-initialize.sh docker run -i --rm -e DATABASE_URI "$image"
+      - name: Smoke test the snapshot npm packages
+        run: |
+          scripts/npm-pack.sh dist/npm
+          dir=$(mktemp -d)
+          npm pack ./dist/npm/postgres-dba-mcp ./dist/npm/postgres-dba-mcp-linux-x64 --pack-destination "$dir"
+          (cd "$dir" && npm init -y >/dev/null && npm install --no-audit --no-fund ./*.tgz)
+          scripts/smoke-initialize.sh "$dir/node_modules/.bin/postgres-dba-mcp"
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
@@ -68,7 +75,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # A fine-grained token that writes the Homebrew tap only: GITHUB_TOKEN cannot write to another repository.
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-      # Last: the image it points at must already be on GHCR for the registry to verify ownership.
+      # After the release: the image it points at must already be on GHCR for the registry to verify ownership.
       - name: Publish to the MCP Registry
         run: |
           # A release asset can be replaced the way a tag can be moved, and this job holds the tokens, so the
@@ -78,3 +85,14 @@ jobs:
           tar xzf mcp-publisher.tar.gz mcp-publisher
           ./mcp-publisher login github-oidc
           ./mcp-publisher publish
+      # Last: a missing or expired token then fails the job with everything else already published.
+      - name: Publish to npm
+        run: |
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          scripts/npm-pack.sh dist/npm
+          # The platform packages first: the launcher depends on them.
+          for dir in dist/npm/postgres-dba-mcp-* dist/npm/postgres-dba-mcp; do
+            npm publish "./$dir" --access public --provenance
+          done
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

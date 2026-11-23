@@ -43,6 +43,14 @@ Values keep their PostgreSQL text form, `NULL` (`\N`) stays distinct from an emp
 
 ## Install
 
+With npm (Node.js 18 or later; macOS, Linux and Windows on amd64, macOS and Linux also on arm64), there is nothing to install: `npx` downloads the binary of your platform and runs it.
+
+```sh
+npx -y postgres-dba-mcp --version
+```
+
+In the quick starts below, use `npx -y postgres-dba-mcp` wherever the command is `postgres-dba-mcp`.
+
 With Homebrew (macOS and Linux):
 
 ```sh
@@ -77,6 +85,12 @@ Register the server with the database URI in its environment:
 
 ```sh
 claude mcp add pg --env DATABASE_URI=postgres://pgdba_ro:secret@localhost:5432/pgdba -- postgres-dba-mcp
+```
+
+Without an install, through npm:
+
+```sh
+claude mcp add pg --env DATABASE_URI=postgres://pgdba_ro:secret@localhost:5432/pgdba -- npx -y postgres-dba-mcp
 ```
 
 Or put it in `.mcp.json`:

@@ -1,0 +1,20 @@
+{
+  "name": "postgres-dba-mcp",
+  "version": "0.0.0",
+  "description": "Bounded, read-only Postgres MCP server: ten DBA tools, compact CSV results",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/a-lafon/postgres-dba-mcp.git"
+  },
+  "bin": {
+    "postgres-dba-mcp": "bin/postgres-dba-mcp.js"
+  },
+  "files": [
+    "bin",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
