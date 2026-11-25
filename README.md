@@ -34,6 +34,10 @@ Method, every number including where postgres-dba-mcp does worse, and the compar
 
 Features only, no measurements, read from each project's code or documentation at its latest release on 2026-11-25.
 
+postgres-dba-mcp is the choice when an AI agent must read one PostgreSQL database without being able to write to it and without filling its context: it is read-only by default, checks every statement with PostgreSQL's parser, and caps every result. It is also the maintained replacement for crystaldba/postgres-mcp, which has had no release since May 2025.
+
+Choose DBHub or MCP Toolbox to reach MySQL, SQL Server or other databases from one server. Choose Microsoft postgres-mcp if the agent must write or bulk-load CSV files. @modelcontextprotocol/server-postgres is deprecated, and its read-only transaction can be ended by a `COMMIT` in the SQL.
+
 | | postgres-dba-mcp | [crystaldba/postgres-mcp](https://github.com/crystaldba/postgres-mcp) | [DBHub](https://github.com/bytebase/dbhub) | [MCP Toolbox](https://github.com/googleapis/mcp-toolbox) (`--prebuilt postgres`) | [server-postgres](https://www.npmjs.com/package/@modelcontextprotocol/server-postgres) | [Microsoft postgres-mcp](https://github.com/microsoft/postgres-mcp) |
 |---|---|---|---|---|---|---|
 | Version | 0.4.3 | 0.3.0 | 2.1.0 | 1.18.0 | 0.6.2 | 0.3.1 (preview) |
@@ -45,8 +49,8 @@ Features only, no measurements, read from each project's code or documentation a
 | Tools by default | 10 | 9 | 2 | 29 | 1 | 13 |
 | EXPLAIN with hypothetical indexes | yes | yes | no | no | no | not documented |
 | Index recommendations | yes | yes | no | no | no | not documented |
-| Top queries (`pg_stat_statements`) | yes | yes | no | yes | no | not documented |
-| Lock analysis | yes | no | no | yes | no | not documented |
+| Top queries (`pg_stat_statements`) | yes | yes | no | yes | no | diagnostic metrics tool, contents not documented |
+| Lock analysis | yes | no | no | yes | no | diagnostic metrics tool, contents not documented |
 | Result size cap | rows, bytes and cell length, by default | none | optional `max_rows` | none | none | not documented |
 | Result format | CSV | Python `repr` text | JSON | JSON | JSON | CSV |
 
