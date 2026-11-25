@@ -7,6 +7,8 @@
 
 <h1 align="center">Bounded, read-only Postgres MCP server</h1>
 
+<p align="center"><a href="https://glama.ai/mcp/servers/a-lafon/postgres-dba-mcp"><img alt="a-lafon/postgres-dba-mcp MCP server" src="https://glama.ai/mcp/servers/a-lafon/postgres-dba-mcp/badges/score.svg"></a></p>
+
 <p align="center"><img alt="Three Claude Code questions on the Pagila sample database: execute_sql returns the top films by revenue as compact CSV with a row-count footer, analyze_db_health finds duplicate indexes on the payment partitions, and explain_query with a hypothetical index shows the estimated cost of a query dropping from 310 to 34" src="assets/demo.gif" width="860"></p>
 
 Let Claude Code, Codex or any MCP client explore a PostgreSQL database, run SQL, read query plans, test hypothetical indexes, find the slowest queries and check the database's health, without flooding the model's context or escaping read-only mode.
