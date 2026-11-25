@@ -2,6 +2,27 @@
   "name": "postgres-dba-mcp",
   "version": "0.0.0",
   "description": "Bounded, read-only Postgres MCP server: ten DBA tools, compact CSV results",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "postgres",
+    "postgresql",
+    "dba",
+    "sql",
+    "explain",
+    "index-tuning",
+    "query-optimization",
+    "read-only",
+    "claude",
+    "claude-code",
+    "ai-agents",
+    "llm"
+  ],
+  "homepage": "https://github.com/a-lafon/postgres-dba-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/a-lafon/postgres-dba-mcp/issues"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
